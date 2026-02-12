@@ -1,0 +1,127 @@
+
+name: Build Aurora with BakaSU
+
+on:
+  push:
+    branches: [ lineage-24.0 ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout kernel source
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          bc bison build-essential flex git \
+          libssl-dev libelf-dev lld llvm \
+          python3 python-is-python3 \
+          zip unzip cpio rsync curl \
+          gcc g++ \
+          binutils-aarch64-linux-gnu
+
+    - name: Clone Clang 20
+      run: |
+        git clone --depth=1 https://gitlab.com/provasishh/clang-20.git tc
+
+    - name: Setup BakaSU
+      run: |
+        curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
+
+    - name: Build & Package Kernel
+      run: |
+        echo "Cloning AnyKernel..."
+        git clone --filter=blob:none --depth=1 https://github.com/yassshhhh15/AnyKernel3.git anykernel
+
+        DT=$(date +"%Y%m%d-%H%M")
+        CONFIG=vendor/kona-perf_defconfig
+        FRAGMENT=vendor/oplus.config
+
+        export ARCH=arm64
+        export OUT_DIR=$(pwd)/out
+        export CROSS_COMPILE=$(pwd)/tc/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+
+        export PATH="$(pwd)/tc/clang/bin:$PATH"
+
+        export CC=clang
+        export HOSTCC=clang
+        export HOSTCXX=clang++
+
+        compile() {
+          echo "Loading base configuration..."
+
+          make O=${OUT_DIR} \
+            ARCH=${ARCH} \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=${CROSS_COMPILE} \
+            CC=${CC} \
+            HOSTCC=${HOSTCC} \
+            HOSTCXX=${HOSTCXX} \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            ${CONFIG}
+
+          echo "Merging Oplus configuration..."
+
+          scripts/kconfig/merge_config.sh -O ${OUT_DIR} \
+            ${OUT_DIR}/.config \
+            arch/arm64/configs/${FRAGMENT}
+
+          echo "Resolving configuration dependencies..."
+
+          make O=${OUT_DIR} \
+            ARCH=${ARCH} \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=${CROSS_COMPILE} \
+            CC=${CC} \
+            HOSTCC=${HOSTCC} \
+            HOSTCXX=${HOSTCXX} \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            olddefconfig
+
+          echo "Starting kernel compilation..."
+
+          make O=${OUT_DIR} \
+            ARCH=${ARCH} \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=${CROSS_COMPILE} \
+            CC=${CC} \
+            HOSTCC=${HOSTCC} \
+            HOSTCXX=${HOSTCXX} \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            -j$(nproc)
+        }
+
+        package() {
+          echo "Packaging kernel..."
+
+          cp out/arch/arm64/boot/Image anykernel/
+          cp out/arch/arm64/boot/dtbo.img anykernel/
+          cp out/arch/arm64/boot/dtb anykernel/
+
+          cd anykernel
+          zip -r9 Aurora-AOSP17-${DT}.zip *
+        }
+
+        compile
+        package
+
+    - name: Upload flashable zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: Aurora-AOSP17-BakaSU
+        path: anykernel/*.zip
