@@ -2417,13 +2417,15 @@ bool cgroup_check_set_sched_assist_boost(struct task_struct *p)
 int get_st_group_id(struct task_struct *task)
 {
 #if IS_ENABLED(CONFIG_SCHED_TUNE)
-	const int subsys_id = schedtune_cgrp_id;
-	struct cgroup *grp;
+	/* Lineage backports cgroup ids = kernfs ino; css->id keeps the old small per-hierarchy numbers (top-app = 4) */
+	struct cgroup_subsys_state *css;
+	int id;
 
 	rcu_read_lock();
-	grp = task_cgroup(task, subsys_id);
+	css = task_css(task, schedtune_cgrp_id);
+	id = css ? css->id : -1;
 	rcu_read_unlock();
-	return grp->id;
+	return id;
 #else
 	return 0;
 #endif

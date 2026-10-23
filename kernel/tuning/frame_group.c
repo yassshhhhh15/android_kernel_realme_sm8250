@@ -8,7 +8,6 @@
 #include <linux/sched/cpufreq.h>
 #include <linux/syscore_ops.h>
 #include <linux/version.h>
-#include <../drivers/android/binder_internal.h>
 #include <../kernel/sched/sched.h>
 #include <linux/reciprocal_div.h>
 
@@ -789,16 +788,16 @@ extern struct task_struct *binder_get_thread_task(void *thread);
  *       the other paramenter is unused
  */
 void fbg_binder_wait_for_work_hook(void *unused, bool do_proc_work,
-	struct binder_thread *tsk, struct binder_proc *proc)
+	struct task_struct *binder_task, struct binder_proc *proc)
 {
 	unsigned long flags;
 	raw_spinlock_t *lock = NULL;
 
 	if (do_proc_work) {
-		lock = task_get_frame_group_lock(binder_get_thread_task(tsk));
+		lock = task_get_frame_group_lock(binder_task);
 
 		raw_spin_lock_irqsave(lock, flags);
-		remove_binder_from_frame_group(binder_get_thread_task(tsk));
+		remove_binder_from_frame_group(binder_task);
 		raw_spin_unlock_irqrestore(lock, flags);
 	}
 }
