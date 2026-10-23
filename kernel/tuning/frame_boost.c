@@ -9,6 +9,7 @@
 #include <linux/version.h>
 
 #include "frame_boost.h"
+#include "frame_ioctl.h"
 
 
 struct fbg_vendor_hook fbg_hook;
@@ -51,6 +52,10 @@ static int __init oplus_frame_boost_init(void)
 		goto out;
 
 	ret = frame_group_init();
+	if (ret != 0)
+		goto out;
+
+	ret = frame_ioctl_init();
 	if (ret != 0)
 		goto out;
 

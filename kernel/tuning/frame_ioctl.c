@@ -18,7 +18,15 @@
 #define IM_FLAG_RENDERENGINE (3)
 
 static struct proc_dir_entry *frame_boost_proc;
-int stune_boost[BOOST_MAX_TYPE];
+
+/* the system values, so an app's STUNE_DEF request can restore them (as OPPO's 5.10 frame_ioctl) */
+static struct ofb_stune_data last_sys_stune_data = {
+	.level = -1, .boost_freq = -1, .boost_migr = -1, .vutil_margin = 0xFF,
+	.util_frame_rate = -1, .util_min_threshold = -1, .util_min_obtain_view = -1, .util_min_timeout = -1,
+	.ed_task_boost_mid_duration = -1, .ed_task_boost_mid_util = -1, .ed_task_boost_max_duration = -1,
+	.ed_task_boost_max_util = -1, .ed_task_boost_timeout_duration = -1,
+	.boost_sf_freq_nongpu = -1, .boost_sf_migr_nongpu = -1, .boost_sf_freq_gpu = -1, .boost_sf_migr_gpu = -1,
+};
 #ifdef CONFIG_OPLUS_FEATURE_IM
 static inline int oplus_get_im_flag(struct task_struct *task)
 {
@@ -31,7 +39,7 @@ static inline int oplus_get_im_flag(struct task_struct *task)
 }
 #endif
 
-static void crtl_update_refresh_rate(int pid, unsigned int vsyncNs)
+static void crtl_update_refresh_rate(int pid, int tid, unsigned int vsyncNs)
 {
 	unsigned int frame_rate =  NSEC_PER_SEC / (unsigned int)(vsyncNs);
 	bool is_sf = false;
@@ -44,7 +52,7 @@ static void crtl_update_refresh_rate(int pid, unsigned int vsyncNs)
 		return;
 	}
 
-	if ((pid != current->pid) || (pid != get_frame_group_ui()))
+	if (((pid != current->pid) && (tid != current->pid)) || (pid != get_frame_group_ui()))
 		return;
 
 	if (set_frame_rate(frame_rate))
@@ -75,7 +83,7 @@ static long ofb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case CMD_ID_SET_FPS:
 		if (data.vsyncNs <= 0)
 			return -EINVAL;
-		crtl_update_refresh_rate(data.pid, (unsigned int)data.vsyncNs);
+		crtl_update_refresh_rate(data.pid, data.tid, (unsigned int)data.vsyncNs);
 		break;
 	case CMD_ID_BOOST_HIT:
 		/* App which is not our frame boost target may request frame vsync(like systemui),
@@ -201,6 +209,64 @@ static long handle_ofb_extra_cmd(unsigned int cmd, void __user *uarg)
 	return 0;
 }
 
+#ifndef SYSTEM_UID
+#define SYSTEM_UID 1000
+#endif
+
+/* apply the values in range; -1 (unset) keeps the current one. The ED task fields are stored
+ * only: our 4.19 frame boost has no ED task boost.
+ */
+static void setup_stune_data(struct ofb_stune_data *d)
+{
+	if ((d->boost_freq >= 0) && (d->boost_freq <= 100))
+		stune_boost[BOOST_DEF_FREQ] = d->boost_freq;
+
+	if ((d->boost_migr >= 0) && (d->boost_migr <= 100))
+		stune_boost[BOOST_DEF_MIGR] = d->boost_migr;
+
+	if ((d->vutil_margin >= -16) && (d->vutil_margin <= 16))
+		set_frame_margin(d->vutil_margin);
+
+	if ((d->util_frame_rate >= 0) && (d->util_frame_rate <= 240))
+		stune_boost[BOOST_UTIL_FRAME_RATE] = d->util_frame_rate;
+
+	if ((d->util_min_threshold >= 0) && (d->util_min_threshold <= 1024))
+		stune_boost[BOOST_UTIL_MIN_THRESHOLD] = d->util_min_threshold;
+
+	if ((d->util_min_obtain_view >= 0) && (d->util_min_obtain_view <= 1024))
+		stune_boost[BOOST_UTIL_MIN_OBTAIN_VIEW] = d->util_min_obtain_view;
+
+	if ((d->util_min_timeout >= 0) && (d->util_min_timeout <= 1024))
+		stune_boost[BOOST_UTIL_MIN_TIMEOUT] = d->util_min_timeout;
+
+	if (d->ed_task_boost_mid_duration >= 0)
+		stune_boost[BOOST_ED_TASK_MID_DURATION] = d->ed_task_boost_mid_duration;
+
+	if ((d->ed_task_boost_mid_util >= 0) && (d->ed_task_boost_mid_util <= 1024))
+		stune_boost[BOOST_ED_TASK_MID_UTIL] = d->ed_task_boost_mid_util;
+
+	if (d->ed_task_boost_max_duration >= 0)
+		stune_boost[BOOST_ED_TASK_MAX_DURATION] = d->ed_task_boost_max_duration;
+
+	if ((d->ed_task_boost_max_util >= 0) && (d->ed_task_boost_max_util <= 1024))
+		stune_boost[BOOST_ED_TASK_MAX_UTIL] = d->ed_task_boost_max_util;
+
+	if (d->ed_task_boost_timeout_duration >= 0)
+		stune_boost[BOOST_ED_TASK_TIME_OUT_DURATION] = d->ed_task_boost_timeout_duration;
+
+	if ((d->boost_sf_freq_nongpu >= 0) && (d->boost_sf_freq_nongpu <= 100))
+		stune_boost[BOOST_SF_FREQ_NONGPU] = d->boost_sf_freq_nongpu;
+
+	if ((d->boost_sf_migr_nongpu >= 0) && (d->boost_sf_migr_nongpu <= 100))
+		stune_boost[BOOST_SF_MIGR_NONGPU] = d->boost_sf_migr_nongpu;
+
+	if ((d->boost_sf_freq_gpu >= 0) && (d->boost_sf_freq_gpu <= 100))
+		stune_boost[BOOST_SF_FREQ_GPU] = d->boost_sf_freq_gpu;
+
+	if ((d->boost_sf_migr_gpu >= 0) && (d->boost_sf_migr_gpu <= 100))
+		stune_boost[BOOST_SF_MIGR_GPU] = d->boost_sf_migr_gpu;
+}
+
 static long ofb_sys_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	long ret = 0;
@@ -261,26 +327,15 @@ static long ofb_sys_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 			ofb_debug("invalid address");
 			return -EFAULT;
 		}
-		if ((stune_data.boost_freq >= 0) && (stune_data.boost_freq <= 100))
-			stune_boost[BOOST_DEF_FREQ] = stune_data.boost_freq;
 
-		if ((stune_data.boost_migr >= 0) && (stune_data.boost_migr <= 100))
-			stune_boost[BOOST_DEF_MIGR] = stune_data.boost_migr;
-
-		if ((stune_data.util_frame_rate >= 0) && (stune_data.util_frame_rate <= 240))
-			stune_boost[BOOST_UTIL_FRAME_RATE] = stune_data.util_frame_rate;
-
-		if ((stune_data.util_min_threshold >= 0) && (stune_data.util_min_threshold <= 1024))
-			stune_boost[BOOST_UTIL_MIN_THRESHOLD] = stune_data.util_min_threshold;
-
-		if ((stune_data.util_min_obtain_view >= 0) && (stune_data.util_min_obtain_view <= 1024))
-			stune_boost[BOOST_UTIL_MIN_OBTAIN_VIEW] = stune_data.util_min_obtain_view;
-
-		if ((stune_data.util_min_timeout >= 0) && (stune_data.util_min_timeout <= 1024))
-			stune_boost[BOOST_UTIL_MIN_TIMEOUT] = stune_data.util_min_timeout;
-
-		if ((stune_data.vutil_margin >= -16) && (stune_data.vutil_margin <= 16))
-			set_frame_margin(stune_data.vutil_margin);
+		if (stune_data.boost_freq == STUNE_DEF) {
+			/* an app asks for the default: restore the last system values */
+			setup_stune_data(&last_sys_stune_data);
+		} else {
+			if (task_uid(current).val == SYSTEM_UID && stune_data.boost_freq != STUNE_SF)
+				memcpy(&last_sys_stune_data, &stune_data, sizeof(stune_data));
+			setup_stune_data(&stune_data);
+		}
 
 		break;
 	case CMD_ID_BOOST_STUNE_GPU: {
@@ -297,11 +352,15 @@ static long ofb_sys_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 		if (check_last_compose_time(stune_data.level) && !stune_data.level)
 			boost_allow = false;
 
-		if (boost_allow && stune_data.boost_migr != INVALID_VAL)
-			stune_boost[BOOST_SF_MIGR] = stune_data.boost_migr;
+		if (boost_allow) {
+			stune_boost[BOOST_SF_FREQ] = stune_boost[BOOST_SF_FREQ_GPU];
+			stune_boost[BOOST_SF_MIGR] = stune_boost[BOOST_SF_MIGR_GPU];
+		}
 
-		if (boost_allow && stune_data.boost_freq != INVALID_VAL)
-			stune_boost[BOOST_SF_FREQ] = stune_data.boost_freq;
+		if (!stune_data.level) {
+			stune_boost[BOOST_SF_FREQ] = stune_boost[BOOST_SF_FREQ_NONGPU];
+			stune_boost[BOOST_SF_MIGR] = stune_boost[BOOST_SF_MIGR_NONGPU];
+		}
 		}
 		break;
 	default:

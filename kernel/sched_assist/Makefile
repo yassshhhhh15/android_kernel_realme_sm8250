@@ -1,5 +1,6 @@
 # project: oplus/kernel/cpu
 obj-y += sched_assist_common.o
+obj-y += sa_ux_task.o
 obj-y += sched_assist_workqueue.o
 #ifdef CONFIG_OPLUS_FEATURE_CPU_JANKINFO
 obj-y += sa_jankinfo.o

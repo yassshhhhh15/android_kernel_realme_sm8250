@@ -8,6 +8,9 @@
 
 #define FRAMEBOOST_PROC_NODE "oplus_frame_boost"
 #define INVALID_VAL (INT_MIN)
+/* boost_freq markers in BOOST_STUNE (ColorOS 16+): restore the last system values / SF-only update */
+#define STUNE_DEF 0x444546
+#define STUNE_SF 0x5346
 
 enum BoostStage {
 	BOOST_NONE = 0,
@@ -103,6 +106,11 @@ struct ofb_stune_data {
 	int ed_task_boost_max_duration;
 	int ed_task_boost_max_util;
 	int ed_task_boost_timeout_duration;
+	/* ColorOS 16+ layout (68 bytes); the size is part of the ioctl number */
+	int boost_sf_freq_nongpu;
+	int boost_sf_migr_nongpu;
+	int boost_sf_freq_gpu;
+	int boost_sf_migr_gpu;
 };
 
 #define OFB_MAGIC 0XDE
