@@ -1153,6 +1153,11 @@ config OPLUS_SYSTEM_KERNEL_QCOM
 	help
 	  OPPO's modules pick their Qualcomm (not MediaTek) code paths with this.
 
+config MMAP_LOCK_OPT
+	bool "OPLUS uxchain: do not preempt mmap_lock holders, boost their waiters once"
+	depends on OPLUS_FEATURE_SCHED_ASSIST
+	default y
+
 menuconfig NAMESPACES
 	bool "Namespaces support" if EXPERT
 	depends on MULTIUSER

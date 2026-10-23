@@ -322,11 +322,11 @@ bool should_force_spread_tasks(void) {
 #ifdef CONFIG_CGROUP_SCHED
 static inline int task_cgroup_id(struct task_struct *task)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	/*
+	 * pipa: Android 17 groups tasks in the cpu controller (/dev/cpuctl: foreground 2, background 3, top-app 4 in
+	 * init.rc order) and never mounts schedtune, so use cpu_cgrp_id as OPPO's 5.4+ kernels do
+	 */
 	struct cgroup_subsys_state *css = task_css(task, cpu_cgrp_id);
-#else
-	struct cgroup_subsys_state *css = task_css(task, schedtune_cgrp_id);
-#endif
 
 	return css ? css->id : -1;
 }
@@ -2377,7 +2377,7 @@ out:
 
 	return result;
 }
-#ifdef CONFIG_MMAP_LOCK_OPT
+/* uxchain: OPPO builds these with CONFIG_MMAP_LOCK_OPT; rwsem.c calls them under OPLUS_FEATURE_SCHED_ASSIST */
 void uxchain_rwsem_wake(struct task_struct *tsk, struct rw_semaphore *sem)
 {
 	int set_ux_once;
@@ -2403,7 +2403,6 @@ void uxchain_rwsem_up(struct rw_semaphore *sem)
 		current->get_mmlock = 0;
 	}
 }
-#endif
 
 #define TOP_APP_GROUP_ID	4
 bool im_mali(struct task_struct *p)
@@ -2416,13 +2415,13 @@ bool cgroup_check_set_sched_assist_boost(struct task_struct *p)
 }
 int get_st_group_id(struct task_struct *task)
 {
-#if IS_ENABLED(CONFIG_SCHED_TUNE)
+#ifdef CONFIG_CGROUP_SCHED
 	/* Lineage backports cgroup ids = kernfs ino; css->id keeps the old small per-hierarchy numbers (top-app = 4) */
 	struct cgroup_subsys_state *css;
 	int id;
 
 	rcu_read_lock();
-	css = task_css(task, schedtune_cgrp_id);
+	css = task_css(task, cpu_cgrp_id);	/* see task_cgroup_id() */
 	id = css ? css->id : -1;
 	rcu_read_unlock();
 	return id;
