@@ -1722,11 +1722,7 @@ int get_grp(struct task_struct *p)
 	if (p == NULL)
 		return false;
 	rcu_read_lock();
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	css = task_css(p, cpu_cgrp_id);
-#else
-	css = task_css(p, schedtune_cgrp_id);
-#endif
+	css = task_css(p, cpu_cgrp_id);	/* see task_cgroup_id() */
 	if (!css) {
 		rcu_read_unlock();
 		return false;

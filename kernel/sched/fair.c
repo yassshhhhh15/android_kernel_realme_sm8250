@@ -29,6 +29,7 @@
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
 #include <linux/sched_assist/sched_assist_common.h>
 #include <linux/cpufreq.h>
+#include <linux/reciprocal_div.h>
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
