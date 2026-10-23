@@ -4152,7 +4152,7 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 	if (is_min_capacity_cpu(cpu)) {
 		if (task_boost_policy(p) == SCHED_BOOST_ON_BIG ||
 			task_boost > 0 ||
-			schedtune_task_boost(p) > 0 ||
+			schedtune_task_boost(p) > 0 || uclamp_boosted(p) ||
 			walt_should_kick_upmigrate(p, cpu))
 			return false;
 	} else { /* mid cap cpu */
@@ -6528,6 +6528,23 @@ schedtune_cpu_margin_with(unsigned long util, int cpu, struct task_struct *p)
 	return 0;
 }
 
+#ifdef CONFIG_SCHED_WALT
+/*
+ * Without schedtune (uclamp builds) schedutil still has to see WALT's load: cpu_util_freq() also fills
+ * walt_load (nl/pl/rtgb_active for the hispeed, predictive and colocation boosts). The cpu cgroup's
+ * uclamp takes the place of the schedtune margin.
+ */
+unsigned long
+stune_util(int cpu, unsigned long other_util,
+		 struct sched_walt_cpu_load *walt_load)
+{
+	unsigned long util = min_t(unsigned long, SCHED_CAPACITY_SCALE,
+				   cpu_util_freq(cpu, walt_load) + other_util);
+
+	return uclamp_rq_util_with(cpu_rq(cpu), util, NULL);
+}
+#endif
+
 #endif /* CONFIG_SCHED_TUNE */
 
 static unsigned long cpu_util_without(int cpu, struct task_struct *p);
@@ -7270,7 +7287,7 @@ static int get_start_cpu(struct task_struct *p)
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int start_cpu = rd->min_cap_orig_cpu;
 	int task_boost = per_task_boost(p);
-	bool boosted = schedtune_task_boost(p) > 0 ||
+	bool boosted = schedtune_task_boost(p) > 0 || uclamp_boosted(p) ||
 			task_boost_policy(p) == SCHED_BOOST_ON_BIG ||
 			task_boost == TASK_BOOST_ON_MID;
 	bool task_skip_min = task_skip_min_cpu(p);
@@ -8295,7 +8312,7 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 	u64 start_t = 0;
 	int delta = 0;
 	int task_boost = per_task_boost(p);
-	int boosted = (schedtune_task_boost(p) > 0) || (task_boost > 0);
+	int boosted = (schedtune_task_boost(p) > 0) || uclamp_boosted(p) || (task_boost > 0);
 	int start_cpu;
 
 	if (is_many_wakeup(sibling_count_hint) && prev_cpu != cpu &&

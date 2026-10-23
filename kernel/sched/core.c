@@ -8004,6 +8004,16 @@ static int cpu_cgroup_css_online(struct cgroup_subsys_state *css)
 	cpu_util_update_eff(css);
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
+#ifdef CONFIG_SCHED_WALT
+	/*
+	 * top-app is colocated by default, as the vendor's schedtune.colocate write did on kona
+	 * (Android 12+ has no schedtune, so that write fails)
+	 */
+	if (parent == &root_task_group && !strcmp(css->cgroup->kn->name, "top-app"))
+		tg->colocate = true;
+#endif
+	if (parent == &root_task_group)
+		uclamp_boost_register(css);
 #endif
 
 	return 0;
@@ -8079,8 +8089,12 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 	struct task_struct *task;
 	struct cgroup_subsys_state *css;
 
-	cgroup_taskset_for_each(task, css, tset)
+	cgroup_taskset_for_each(task, css, tset) {
 		sched_move_task(task);
+#if defined(CONFIG_UCLAMP_TASK_GROUP) && defined(CONFIG_SCHED_WALT) && !defined(CONFIG_SCHED_TUNE)
+		sync_cgroup_colocation(task, css_tg(css)->colocate);
+#endif
+	}
 }
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
@@ -8175,9 +8189,9 @@ capacity_from_percent(char *buf)
 	return req;
 }
 
-static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
-				size_t nbytes, loff_t off,
-				enum uclamp_id clamp_id)
+/* also used by uclamp_boost.c (touch boost), which has a css but no open file */
+int cpu_uclamp_write_wrapper(struct cgroup_subsys_state *css, char *buf,
+			     enum uclamp_id clamp_id)
 {
 	struct uclamp_request req;
 	struct task_group *tg;
@@ -8191,7 +8205,7 @@ static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
 
-	tg = css_tg(of_css(of));
+	tg = css_tg(css);
 	if (tg->uclamp_req[clamp_id].value != req.util)
 		uclamp_se_set(&tg->uclamp_req[clamp_id], req.util, false);
 
@@ -8202,12 +8216,21 @@ static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 	tg->uclamp_pct[clamp_id] = req.percent;
 
 	/* Update effective clamps to track the most restrictive value */
-	cpu_util_update_eff(of_css(of));
+	cpu_util_update_eff(css);
 
 	rcu_read_unlock();
 	mutex_unlock(&uclamp_mutex);
 
-	return nbytes;
+	return 0;
+}
+
+static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
+				size_t nbytes, loff_t off,
+				enum uclamp_id clamp_id)
+{
+	int ret = cpu_uclamp_write_wrapper(of_css(of), buf, clamp_id);
+
+	return ret ? ret : nbytes;
 }
 
 static ssize_t cpu_uclamp_min_write(struct kernfs_open_file *of,
@@ -8279,6 +8302,36 @@ static u64 cpu_uclamp_ls_read_u64(struct cgroup_subsys_state *css,
 
 	return (u64) tg->latency_sensitive;
 }
+
+#ifdef CONFIG_SCHED_WALT
+static int cpu_uclamp_colocate_write_u64(struct cgroup_subsys_state *css,
+					 struct cftype *cftype, u64 colocate)
+{
+	struct task_group *tg = css_tg(css);
+	struct css_task_iter it;
+	struct task_struct *p;
+
+	if (colocate > 1)
+		return -EINVAL;
+	if (tg->colocate == !!colocate)
+		return 0;
+	tg->colocate = !!colocate;
+
+	/* move the group's current tasks in or out; new ones follow on fork and attach */
+	css_task_iter_start(css, 0, &it);
+	while ((p = css_task_iter_next(&it)))
+		sync_cgroup_colocation(p, tg->colocate);
+	css_task_iter_end(&it);
+
+	return 0;
+}
+
+static u64 cpu_uclamp_colocate_read_u64(struct cgroup_subsys_state *css,
+					struct cftype *cft)
+{
+	return (u64) css_tg(css)->colocate;
+}
+#endif
 #endif /* CONFIG_UCLAMP_TASK_GROUP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -8645,6 +8698,14 @@ static struct cftype cpu_legacy_files[] = {
 		.read_u64 = cpu_uclamp_ls_read_u64,
 		.write_u64 = cpu_uclamp_ls_write_u64,
 	},
+#ifdef CONFIG_SCHED_WALT
+	{
+		.name = "uclamp.colocate",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = cpu_uclamp_colocate_read_u64,
+		.write_u64 = cpu_uclamp_colocate_write_u64,
+	},
+#endif
 #endif
 	{ }	/* Terminate */
 };
@@ -8832,6 +8893,14 @@ static struct cftype cpu_files[] = {
 		.read_u64 = cpu_uclamp_ls_read_u64,
 		.write_u64 = cpu_uclamp_ls_write_u64,
 	},
+#ifdef CONFIG_SCHED_WALT
+	{
+		.name = "uclamp.colocate",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = cpu_uclamp_colocate_read_u64,
+		.write_u64 = cpu_uclamp_colocate_write_u64,
+	},
+#endif
 #endif
 	{ }	/* terminate */
 };

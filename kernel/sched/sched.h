@@ -477,6 +477,10 @@ struct task_group {
 	struct uclamp_se	uclamp[UCLAMP_CNT];
 	/* Latency-sensitive flag used for a task group */
 	unsigned int		latency_sensitive;
+#ifdef CONFIG_SCHED_WALT
+	/* Tasks of this group join WALT's colocation group (schedtune.colocate without schedtune) */
+	bool			colocate;
+#endif
 #endif
 
 };
@@ -2255,7 +2259,7 @@ static inline unsigned long cpu_util_cum(int cpu, int delta)
 	return (delta >= capacity) ? capacity : delta;
 }
 
-#ifdef CONFIG_SCHED_TUNE
+#if defined(CONFIG_SCHED_TUNE) || defined(CONFIG_SCHED_WALT)
 extern unsigned long stune_util(int cpu, unsigned long other_util,
 				struct sched_walt_cpu_load *walt_load);
 #endif
@@ -2708,6 +2712,11 @@ unsigned long task_util_est(struct task_struct *p);
 unsigned int uclamp_task(struct task_struct *p);
 bool uclamp_latency_sensitive(struct task_struct *p);
 bool uclamp_boosted(struct task_struct *p);
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+int cpu_uclamp_write_wrapper(struct cgroup_subsys_state *css, char *buf, enum uclamp_id clamp_id);
+/* uclamp_boost.c: touch boost through the cpu cgroup's uclamp.min */
+void uclamp_boost_register(struct cgroup_subsys_state *css);
+#endif
 
 #ifdef arch_scale_freq_capacity
 # ifndef arch_scale_freq_invariant
@@ -3043,10 +3052,25 @@ extern void update_cgroup_boost_settings(void);
 extern void restore_cgroup_boost_settings(void);
 
 #else
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+/* no schedtune (Android 12+): the cpu cgroup's uclamp.colocate flag decides */
+extern int sync_cgroup_colocation(struct task_struct *p, bool insert);
+static inline bool schedtune_task_colocated(struct task_struct *p)
+{
+	bool colocated;
+
+	rcu_read_lock();
+	colocated = task_group(p)->colocate;
+	rcu_read_unlock();
+
+	return colocated;
+}
+#else
 static inline bool schedtune_task_colocated(struct task_struct *p)
 {
 	return false;
 }
+#endif
 
 static inline bool task_sched_boost(struct task_struct *p)
 {

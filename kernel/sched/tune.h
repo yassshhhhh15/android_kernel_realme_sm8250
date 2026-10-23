@@ -37,7 +37,9 @@ unsigned int uclamp_ed_task_filter(struct task_struct *p);
 #define schedtune_enqueue_task(task, cpu) do { } while (0)
 #define schedtune_dequeue_task(task, cpu) do { } while (0)
 
+#ifndef CONFIG_SCHED_WALT
 #define stune_util(cpu, other_util, walt_load) cpu_util_cfs(cpu_rq(cpu))
+#endif
 
 #ifdef OPLUS_FEATURE_POWER_CPUFREQ
 #define schedtune_window_policy(tsk) 0
