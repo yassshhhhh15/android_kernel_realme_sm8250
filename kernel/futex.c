@@ -2365,9 +2365,7 @@ queue_unlock(struct futex_hash_bucket *hb)
 static inline void __queue_me(struct futex_q *q, struct futex_hash_bucket *hb)
 {
 	int prio;
-#ifdef CONFIG_OPLUS_LOCKING_STRATEGY
-	bool already_on_hb = false;
-#endif
+
 	/*
 	 * The priority used to register this element is
 	 * - either the real thread-priority for the real-time threads
