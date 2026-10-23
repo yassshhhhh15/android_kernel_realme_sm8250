@@ -303,8 +303,41 @@ void adreno_drawctxt_invalidate(struct kgsl_device *device,
  */
 #define KGSL_CONTEXT_PRIORITY_MED	0x8
 
+/*
+ * pipa: the userspace driver gives SurfaceFlinger's RenderEngine priority 4,
+ * the same ringbuffer (priority / 4) as apps that ask for a high priority
+ * context (the ColorOS launcher), so client composition queues behind their
+ * animation rendering and misses the vsync. Put SurfaceFlinger on the top
+ * ringbuffer (it preempts all app work) and SystemUI at least level with the
+ * launcher. Matched by the thread group leader's comm at context create.
+ */
+#define KGSL_CONTEXT_PRIORITY_COMPOSITOR	0x1
+#define KGSL_CONTEXT_PRIORITY_SYSUI		0x4
+
+static void _set_pipa_priority(struct adreno_context *drawctxt)
+{
+	const char *comm = current->group_leader->comm;
+	unsigned int prio = (drawctxt->base.flags & KGSL_CONTEXT_PRIORITY_MASK)
+			>> KGSL_CONTEXT_PRIORITY_SHIFT;
+	unsigned int want;
+
+	if (!strcmp(comm, "surfaceflinger"))
+		want = KGSL_CONTEXT_PRIORITY_COMPOSITOR;
+	else if (!strcmp(comm, "ndroid.systemui"))
+		want = KGSL_CONTEXT_PRIORITY_SYSUI;
+	else
+		return;
+
+	if (prio != KGSL_CONTEXT_PRIORITY_UNDEF && prio <= want)
+		return;
+	drawctxt->base.flags &= ~KGSL_CONTEXT_PRIORITY_MASK;
+	drawctxt->base.flags |= want << KGSL_CONTEXT_PRIORITY_SHIFT;
+}
+
 static inline void _set_context_priority(struct adreno_context *drawctxt)
 {
+	_set_pipa_priority(drawctxt);
+
 	/* If the priority is not set by user, set it for them */
 	if ((drawctxt->base.flags & KGSL_CONTEXT_PRIORITY_MASK) ==
 			KGSL_CONTEXT_PRIORITY_UNDEF)
