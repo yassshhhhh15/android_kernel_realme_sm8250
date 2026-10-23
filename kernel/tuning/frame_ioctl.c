@@ -13,6 +13,7 @@
 #include "frame_boost.h"
 #include "frame_debug.h"
 #include "cluster_boost.h"
+#include "frame_ioctl.h"
 
 #define IM_FLAG_SURFACEFLINGER (1)
 #define IM_FLAG_RENDERENGINE (3)
@@ -139,6 +140,19 @@ static long ofb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static int fbg_set_task_preferred_cluster(void __user *uarg)
+{
+	struct ofb_ctrl_cluster data;
+
+	if (uarg == NULL)
+		return -EINVAL;
+
+	if (copy_from_user(&data, uarg, sizeof(data)))
+		return -EFAULT;
+
+	return __fbg_set_task_preferred_cluster(data.tid, data.cluster_id);
+}
+
 static long fbg_add_task_to_group(void __user *uarg)
 {
 	struct ofb_key_thread_info info;
@@ -151,6 +165,10 @@ static long fbg_add_task_to_group(void __user *uarg)
 		ofb_debug("%s: copy_from_user fail\n", __func__);
 		return -EFAULT;
 	}
+
+	/* sanity check a loop boundary */
+	if (info.thread_num > MAX_KEY_THREAD_NUM)
+		info.thread_num = MAX_KEY_THREAD_NUM;
 
 	for (i = 0; i < info.thread_num; i++)
 		add_task_to_game_frame_group(info.tid[i], info.add);

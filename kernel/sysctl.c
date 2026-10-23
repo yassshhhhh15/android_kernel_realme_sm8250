@@ -356,6 +356,10 @@ static int bpf_unpriv_handler(struct ctl_table *table, int write,
 
 static struct ctl_table kern_table[];
 static struct ctl_table vm_table[];
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+/* ColorOS 16+ looks for the frame boost switches in /proc/sys/fbg (5.10 frame_sysctl.c) */
+static struct ctl_table fbg_table[];
+#endif
 static struct ctl_table fs_table[];
 static struct ctl_table debug_table[];
 static struct ctl_table dev_table[];
@@ -400,6 +404,13 @@ static struct ctl_table sysctl_base_table[] = {
 		.mode		= 0555,
 		.child		= dev_table,
 	},
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+	{
+		.procname	= "fbg",
+		.mode		= 0555,
+		.child		= fbg_table,
+	},
+#endif
 	{ }
 };
 
@@ -498,6 +509,39 @@ static int slide_boost_ctrl_handler(struct ctl_table *table, int write, void __u
 out:
 	return result;
 }
+
+/* the same switches as in kern_table */
+static struct ctl_table fbg_table[] = {
+	{
+		.procname	= "frame_boost_enabled",
+		.data		= &sysctl_frame_boost_enable,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "frame_boost_debug",
+		.data		= &sysctl_frame_boost_debug,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "slide_boost_enabled",
+		.data		= &sysctl_slide_boost_enabled,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= slide_boost_ctrl_handler,
+	},
+	{
+		.procname	= "input_boost_enabled",
+		.data		= &sysctl_input_boost_enabled,
+		.maxlen		= sizeof(int),
+		.mode		= 0666,
+		.proc_handler	= input_boost_ctrl_handler,
+	},
+	{ }
+};
 #else
 int sysctl_slide_boost_enabled = 0;
 #endif
