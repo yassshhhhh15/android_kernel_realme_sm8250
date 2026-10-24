@@ -546,7 +546,17 @@ static struct ctl_table fbg_table[] = {
 int sysctl_slide_boost_enabled = 0;
 #endif
 int sysctl_boost_task_threshold = 51;
-int sysctl_frame_rate = 60;
+/*
+ * pipa: OPPO's vendor perf daemon writes frame_rate on refresh-rate changes; on pipa nothing does, and the panel runs
+ * at 120 Hz. 60 made the UX frequency-load window (core.c) assume 16.7 ms frames.
+ */
+int sysctl_frame_rate = 120;
+/*
+ * pipa: heavy UX threads (the top app's UI and RenderThread) start on the big cluster and leave a little core that
+ * cannot fit them, not only during the slide scene (which OPPO's vendor daemon sets; pipa has none). Launcher main +
+ * RenderThread pinned to the big cores cut its late frames ~15 % (2026-10-24). 0 = OPPO's slide-only behaviour.
+ */
+int sysctl_ux_prefer_big = 1;
 int sched_frame_rate_handler(struct ctl_table *table, int write, void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret;
@@ -2054,6 +2064,13 @@ static struct ctl_table kern_table[] = {
 		.proc_handler   = proc_dointvec,
 	},
 #endif
+	{
+		.procname	= "ux_prefer_big",
+		.data		= &sysctl_ux_prefer_big,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
 	{
 		.procname	= "boost_task_threshold",
 		.data		= &sysctl_boost_task_threshold,

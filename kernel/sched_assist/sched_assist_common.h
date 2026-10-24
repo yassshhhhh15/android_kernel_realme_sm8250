@@ -289,6 +289,7 @@ bool sched_assist_task_misfit(struct task_struct *task, int cpu, int flag);
 #else
 static inline bool sched_assist_task_misfit(struct task_struct *task, int cpu, int flag) { return false; }
 #endif
+extern int sysctl_ux_prefer_big;
 static inline bool is_heavy_ux_task(struct task_struct *task)
 {
 	return task->ux_state & SA_TYPE_HEAVY;

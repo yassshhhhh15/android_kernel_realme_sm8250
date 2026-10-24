@@ -7285,7 +7285,7 @@ static int get_start_cpu(struct task_struct *p)
 			rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu;
 	}
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
-	if (sched_assist_scene(SA_SLIDE) && is_heavy_ux_task(p) && (task_util(p) >= sysctl_boost_task_threshold ||
+	if ((sched_assist_scene(SA_SLIDE) || sysctl_ux_prefer_big) && is_heavy_ux_task(p) && (task_util(p) >= sysctl_boost_task_threshold ||
 		scale_demand(p->ravg.sum) >= sysctl_boost_task_threshold)) {
 		start_cpu = rd->mid_cap_orig_cpu == -1 ?
 			rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu;
@@ -8475,7 +8475,7 @@ oplus_done:
 		set_ux_task_to_prefer_cpu(p, &best_energy_cpu);
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
-	if (sched_assist_scene(SA_SLIDE) && is_heavy_ux_task(p) &&
+	if ((sched_assist_scene(SA_SLIDE) || sysctl_ux_prefer_big) && is_heavy_ux_task(p) &&
 		ux_task_misfit(p, best_energy_cpu)) {
 		find_ux_task_cpu(p, &best_energy_cpu);
 	}
