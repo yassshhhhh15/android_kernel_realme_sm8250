@@ -1319,7 +1319,14 @@ int set_ux_task_cpu_common_by_prio(struct task_struct *task, int *target_cpu, bo
 bool is_sf(struct task_struct *p)
 {
 	char sf_name[] = "surfaceflinger";
-	return (strcmp(p->comm, sf_name) == 0) && (p->pid == p->tgid);
+	/*
+	 * pipa: also SF's RenderEngine thread (GPU composition, SCHED_FIFO). Matching only the main thread left
+	 * RenderEngine on the little cores ~40 % of the time in a boost scene (re_pid is a single remembered tid).
+	 */
+	if (p->pid != p->tgid)
+		return p->group_leader && !strcmp(p->group_leader->comm, sf_name) &&
+			!strcmp(p->comm, "RenderEngine");
+	return strcmp(p->comm, sf_name) == 0;
 }
 
 void drop_ux_task_cpus(struct task_struct *p, struct cpumask *lowest_mask)
