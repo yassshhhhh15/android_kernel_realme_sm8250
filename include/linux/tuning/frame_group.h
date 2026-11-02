@@ -53,7 +53,7 @@ void fbg_binder_wakeup_hook(void *unused, struct task_struct *caller_task,
 void fbg_binder_restore_priority_hook(void *unused, struct binder_transaction *t,
 			struct task_struct *task);
 void fbg_binder_wait_for_work_hook(void *unused, bool do_proc_work,
-			struct binder_thread *tsk, struct binder_proc *proc);
+			struct task_struct *binder_task, struct binder_proc *proc);
 void fbg_sync_txn_recvd_hook(void *unused, struct task_struct *tsk, struct task_struct *from);
 void fbg_update_cfs_util_hook(void *unused, struct task_struct *tsk,
 			u64 runtime, u64 vruntime);

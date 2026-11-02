@@ -289,6 +289,7 @@ bool sched_assist_task_misfit(struct task_struct *task, int cpu, int flag);
 #else
 static inline bool sched_assist_task_misfit(struct task_struct *task, int cpu, int flag) { return false; }
 #endif
+extern int sysctl_ux_prefer_big;
 static inline bool is_heavy_ux_task(struct task_struct *task)
 {
 	return task->ux_state & SA_TYPE_HEAVY;
@@ -370,6 +371,7 @@ static inline bool is_small_task(struct task_struct *task)
 void ux_priority_systrace_c(unsigned int cpu, struct task_struct *p);
 unsigned int ux_task_exec_limit(struct task_struct *p);
 void oplus_set_ux_state_lock(struct task_struct *t, int ux_state, bool need_lock_rq);
+int oplus_ux_task_proc_init(void);
 void enqueue_ux_thread_to_list(struct rq *rq, struct task_struct *p);
 void dequeue_ux_thread_from_list(struct rq *rq, struct task_struct *p);
 void android_vh_scheduler_tick_handler(struct rq *rq);

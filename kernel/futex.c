@@ -2365,6 +2365,7 @@ queue_unlock(struct futex_hash_bucket *hb)
 static inline void __queue_me(struct futex_q *q, struct futex_hash_bucket *hb)
 {
 	int prio;
+        bool already_on_hb = false;	/* the OPLUS hook below is disabled, so stays false */
 
 	/*
 	 * The priority used to register this element is
