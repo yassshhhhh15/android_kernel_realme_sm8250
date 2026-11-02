@@ -7,6 +7,9 @@
 #ifndef _OPLUS_SCHED_FORK_H_
 #define _OPLUS_SCHED_FORK_H_
 
+#include <linux/string.h>
+#include <linux/sched_assist/sched_assist_common.h>
+
 static inline void init_task_ux_info(struct task_struct *p)
 {
 	p->ux_state = 0;
@@ -25,7 +28,9 @@ static inline void init_task_ux_info(struct task_struct *p)
 	p->enqueue_time = 0;
 	p->inherit_ux_start = 0;
 #ifdef CONFIG_OPLUS_UX_IM_FLAG
-	p->ux_im_flag = 0;
+	/* a thread forked from RenderThread inherits IM_FLAG_RENDER_THREAD */
+	p->ux_im_flag = (current->ux_im_flag == IM_FLAG_RENDER_THREAD &&
+			!strcmp(current->comm, "RenderThread")) ? IM_FLAG_RENDER_THREAD : 0;
 #endif
 #ifdef CONFIG_MMAP_LOCK_OPT
 	p->ux_once = 0;

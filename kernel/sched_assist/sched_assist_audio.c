@@ -412,7 +412,8 @@ void oplus_sched_assist_audio_perf_addIm(struct task_struct *task, int im_flag)
 	if (!is_audio_perf_enable())
 		return;
 
-	if (is_audio_flaged(task) && im_flag == IM_FLAG_NONE) {
+	if (is_audio_flaged(task) && (im_flag == IM_FLAG_NONE ||
+			im_flag == IM_FLAG_AUDIO + IM_FLAG_CLEAR)) {
 		set_sched_boost(task, false);
 	} else if (im_flag == IM_FLAG_AUDIO) {
 		set_sched_boost(task, true);

@@ -121,35 +121,38 @@ enum ANMATION_TYPE
 
 #ifdef CONFIG_OPLUS_UX_IM_FLAG
 /*
+ * Numbering of the ColorOS 16+/17 userspace (OPPO sm8750 sa_common.h).
  * new flag should be add before MAX_IM_FLAG_TYPE,
  * never change the value of those existed flag type.
  */
 enum IM_FLAG_TYPE {
 	IM_FLAG_NONE = 0,
 	IM_FLAG_SURFACEFLINGER,
-	IM_FLAG_HWC,
+	IM_FLAG_HWC,			/* Discarded */
 	IM_FLAG_RENDERENGINE,
 	IM_FLAG_WEBVIEW,
 	IM_FLAG_CAMERA_HAL,
 	IM_FLAG_AUDIO,
 	IM_FLAG_HWBINDER,
 	IM_FLAG_LAUNCHER,
-	IM_FLAG_LAUNCHER_NON_UX_RENDER,
+	IM_FLAG_LAUNCHER_NON_UX_RENDER,	/* for app to set ux directly, discarded */
 	IM_FLAG_SS_LOCK_OWNER,
-	IM_FLAG_CAMERA_SERVER,
-	IM_FLAG_SYSTEMSERVER_PID,
-	IM_FLAG_FORBID_SET_CPU_AFFINITY_IN_KERNEL,
-	IM_FLAG_MIDASD,
-	MAX_IM_FLAG_TYPE,
-	/* NOTE:
-		IM_FLAG_FORBID_SET_CPU_AFFINITY must be the same value(11) as defined in TpdManager.java
-		And it is duplicate with IM_FLAG_CAMERA_SERVER in kernel 5.4.
-		Play a trick here, Because camera server has a system uid 1047,
-		if receive IM_FLAG_FORBID_SET_CPU_AFFINITY(IM_FLAG_CAMERA_SERVER) for application task,
-		reset im_flag value to IM_FLAG_FORBID_SET_CPU_AFFINITY_IN_KERNEL.
-	*/
 	IM_FLAG_FORBID_SET_CPU_AFFINITY = 11, /* forbid setting cpu affinity from app */
+	IM_FLAG_SYSTEMSERVER_PID,
+	IM_FLAG_MIDASD,
+	IM_FLAG_AUDIO_CAMERA_HAL,	/* audio mode disable camera hal ux */
+	IM_FLAG_AFFINITY_THREAD,
+	IM_FLAG_TPD_SET_CPU_AFFINITY = 16,
+	IM_FLAG_COMPRESS_THREAD = 17,	/* compress thread skips locking protect */
+	IM_FLAG_RENDER_THREAD = 18,
+	MAX_IM_FLAG_TYPE,
 };
+
+/*
+ * ColorOS 16+ userspace clears a flag by writing IM_FLAG_CLEAR + flag
+ * (70 = clear IM_FLAG_AUDIO). A value >= IM_FLAG_CLEAR is never stored.
+ */
+#define IM_FLAG_CLEAR			64
 #endif
 
 struct ux_sched_cluster {

@@ -101,6 +101,12 @@ void update_locking_time(unsigned long time, bool in_cs)
 	if (test_task_is_rt(current))
 		return;
 
+#ifdef CONFIG_OPLUS_UX_IM_FLAG
+	/* compress thread (osense.compress) skips locking protect */
+	if (unlikely(current->ux_im_flag == IM_FLAG_COMPRESS_THREAD))
+		return;
+#endif
+
 	if (!in_cs)
 		goto set;
 

@@ -1484,7 +1484,7 @@ void place_entity_adjust_ux_task(struct cfs_rq *cfs_rq, struct sched_entity *se,
 	}
 
 #if defined(CONFIG_OPLUS_FEATURE_AUDIO_OPT) && defined(CONFIG_OPLUS_UX_IM_FLAG) && defined(CONFIG_OPLUS_FEATURE_AUDIO_CAMUX_OFF)
-	if (sched_assist_scene(SA_AUDIO) && (se_task->group_leader) && se_task->group_leader->ux_im_flag == IM_FLAG_CAMERA_SERVER) {
+	if (sched_assist_scene(SA_AUDIO) && (se_task->group_leader) && se_task->group_leader->ux_im_flag == IM_FLAG_AUDIO_CAMERA_HAL) {
 		return;
 	}
 #endif
@@ -2640,20 +2640,37 @@ static pid_t global_im_flag_pid = -1;
 
 static int im_flag_set_handle(struct task_struct *task, int im_flag)
 {
-#ifdef CONFIG_OPLUS_SS_LOCKER_OPT
 	int old_im = task->ux_im_flag;
-#endif
-	/* check if flag is for app task */
-	if (IM_FLAG_FORBID_SET_CPU_AFFINITY == im_flag) {
-		int uid = task_uid(task).val;
-		if ((uid >= FIRST_APPLICATION_UID) && (uid <= LAST_APPLICATION_UID)) {
-			im_flag = IM_FLAG_FORBID_SET_CPU_AFFINITY_IN_KERNEL;
-		}
-	}
+	int new_im = im_flag;
+
+	/*
+	 * ColorOS 16+ writes IM_FLAG_CLEAR + flag to clear a flag: with our single
+	 * value, that only has an effect if the task still holds exactly that flag.
+	 * Never store anything >= MAX_IM_FLAG_TYPE: ignore it, so that e.g. the 19
+	 * libart writes for its GC thread (no meaning in OPPO's tables, a harmless
+	 * bit in their bitmap) can not clobber a flag the task already holds.
+	 */
+	if (im_flag > IM_FLAG_CLEAR)
+		new_im = im_flag - IM_FLAG_CLEAR;
+	if (new_im < 0 || new_im >= MAX_IM_FLAG_TYPE)
+		return 0;
+	/*
+	 * The system_server main thread gets SS_LOCK_OWNER (10/74) too; with one
+	 * value that would drop SYSTEMSERVER_PID, which futex.c needs on the leader.
+	 */
+	if (old_im == IM_FLAG_SYSTEMSERVER_PID && new_im == IM_FLAG_SS_LOCK_OWNER)
+		return 0;
 
 #ifdef CONFIG_OPLUS_CPU_AUDIO_PERF
 	oplus_sched_assist_audio_perf_addIm(task, im_flag);
 #endif
+
+	if (im_flag > IM_FLAG_CLEAR) {
+		if (old_im != new_im)
+			return 0;
+		new_im = IM_FLAG_NONE;
+	}
+	im_flag = new_im;
 
 	task->ux_im_flag = im_flag;
 
@@ -3387,7 +3404,7 @@ bool oplus_sched_ban_setaffinity(struct task_struct *task, const struct cpumask 
 		rcu_read_unlock();
 	}
 
-	return (im_flag == IM_FLAG_FORBID_SET_CPU_AFFINITY_IN_KERNEL);
+	return (im_flag == IM_FLAG_FORBID_SET_CPU_AFFINITY);
 }
 #else
 bool oplus_sched_ban_setaffinity(struct task_struct *task, const struct cpumask *new_mask) {
