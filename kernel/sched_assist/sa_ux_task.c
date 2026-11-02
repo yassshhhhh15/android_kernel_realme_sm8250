@@ -187,6 +187,12 @@ static long uxt_write(pid_t pid, pid_t tid, int v, bool from_sys)
 	return ret;
 }
 
+/* write_task_ux() of the 5.10 sched_assist: qos_sched.c sets the ux latency of a QoS level with it */
+long write_task_ux(pid_t pid, pid_t tid, int ux_value, bool from_sys)
+{
+	return uxt_write(pid, tid, ux_value, from_sys);
+}
+
 static long uxt_ioctl(unsigned int cmd, unsigned long arg, bool from_sys)
 {
 	void __user *uarg = (void __user *)arg;

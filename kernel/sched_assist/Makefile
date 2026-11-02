@@ -1,6 +1,7 @@
 # project: oplus/kernel/cpu
 obj-y += sched_assist_common.o
 obj-y += sa_ux_task.o
+obj-$(CONFIG_OPLUS_FEATURE_QOS_SCHED) += qos_sched.o qos_sched_lut.o
 ifneq ($(CONFIG_OPLUS_FEATURE_ASYNC_BINDER_INHERIT_UX),y)
 obj-y += sa_binder_ux_flag.o
 endif

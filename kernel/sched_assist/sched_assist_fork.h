@@ -41,6 +41,12 @@ static inline void init_task_ux_info(struct task_struct *p)
 	p->lb_state = 0;
 	p->ld_flag = 0;
 #endif
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+	/* the child is not QoS-set; the copied parent mutex must be re-initialised */
+	p->qos_level = -1;
+	p->qos_recover_prio = -2;
+	mutex_init(&p->qs_mutex);
+#endif
 #ifdef CONFIG_OPLUS_FEATURE_AUDIO_OPT
 	memset(&p->oplus_task_info, 0, sizeof(struct task_info));
 #endif

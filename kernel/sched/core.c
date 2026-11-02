@@ -3286,6 +3286,10 @@ void wake_up_new_task(struct task_struct *p)
 	struct rq_flags rf;
 	struct rq *rq;
 
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+	/* sleeps (sched_setattr, mutex): before any lock; OPPO has android_rvh_wake_up_new_task here */
+	qs_task_inherit_qos_level(p);
+#endif
 	add_new_task_to_grp(p);
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
 

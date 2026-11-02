@@ -375,6 +375,12 @@ void ux_priority_systrace_c(unsigned int cpu, struct task_struct *p);
 unsigned int ux_task_exec_limit(struct task_struct *p);
 void oplus_set_ux_state_lock(struct task_struct *t, int ux_state, bool need_lock_rq);
 int oplus_ux_task_proc_init(void);
+long write_task_ux(pid_t pid, pid_t tid, int ux_value, bool from_sys);
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+void qs_task_inherit_qos_level(struct task_struct *p);
+#else
+static inline void qs_task_inherit_qos_level(struct task_struct *p) {}
+#endif
 void enqueue_ux_thread_to_list(struct rq *rq, struct task_struct *p);
 void dequeue_ux_thread_from_list(struct rq *rq, struct task_struct *p);
 void android_vh_scheduler_tick_handler(struct rq *rq);

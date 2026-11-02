@@ -1682,6 +1682,12 @@ struct task_struct {
 	int dtpdg; /* dynamic tpd task group */
 	int tpd_st; /* affinity decision from im */
 #endif
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+	/* QoS level of the thread (-1 none), prio to restore (-2 none), serialises level changes */
+	int qos_level;
+	int qos_recover_prio;
+	struct mutex qs_mutex;
+#endif
 #ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
 	struct list_head fbg_list;
 	unsigned int fbg_state;

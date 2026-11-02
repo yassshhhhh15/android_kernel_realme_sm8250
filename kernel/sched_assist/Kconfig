@@ -3,6 +3,14 @@ config OPLUS_FEATURE_SCHED_ASSIST
 	default n
 	help
 	  turning sched for ui, render and so on to improve UX
+config OPLUS_FEATURE_QOS_SCHED
+	bool "qos_sched"
+	default n
+	depends on OPLUS_FEATURE_SCHED_ASSIST && UCLAMP_TASK
+	help
+	  ColorOS 17 thread QoS levels (uclamp, priority, ux latency) set by
+	  system_server through /proc/oplus_qos_sched/{qos_level,qos_lut}.
+
 config OPLUS_FEATURE_SCHED_SPREAD
 	bool "sched_spread"
 	default n
