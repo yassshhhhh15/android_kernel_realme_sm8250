@@ -53,6 +53,7 @@ enum {
 #define IOCTL_SET_TID_ARRAY_LEVEL \
 	_IOW(QOS_SCHED_MAGIC, SET_TID_ARRAY_LEVEL, struct qos_sched_ioctl_data)
 
+/* Userspace ABI: 264-byte ioctl payload; keep this layout unchanged. */
 #define MAX_TIDS 64
 struct tid_array {
 	int count;

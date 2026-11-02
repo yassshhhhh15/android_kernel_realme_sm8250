@@ -8648,7 +8648,31 @@ static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+/*
+ * ColorOS qos_sched.so writes cpu.schedtune.boost after uclamp.min/max and shares and reports the whole group
+ * level as failed when the file is missing (Android 17 mounts no schedtune). Boosting is done through uclamp:
+ * accept the write and change nothing.
+ */
+static s64 cpu_schedtune_boost_read_s64(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	return 0;
+}
+
+static int cpu_schedtune_boost_write_s64(struct cgroup_subsys_state *css, struct cftype *cft, s64 val)
+{
+	return 0;
+}
+#endif
+
 static struct cftype cpu_legacy_files[] = {
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+	{
+		.name = "schedtune.boost",
+		.read_s64 = cpu_schedtune_boost_read_s64,
+		.write_s64 = cpu_schedtune_boost_write_s64,
+	},
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	{
 		.name = "shares",

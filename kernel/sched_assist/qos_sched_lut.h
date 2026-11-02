@@ -7,10 +7,11 @@
 
 #include <linux/sched.h>
 #include <linux/types.h>
+#include <linux/refcount.h>
+#include <linux/mutex.h>
 
 #define MAX_QOS_LEVEL       (256)
 #define QOS_LATENCY_SHIFT   (32)
-#define QOS_LUT_NUM   (2)
 #define QOS_LUT_TYPE_MASK   (7)
 #define LUT_CTRL_MAGIC 'p'
 
@@ -43,15 +44,21 @@ struct qos_lut {
 };
 
 struct qos_lut_info {
-        u8    lut_num;
-        s32   lut_size;
+	u16 lut_num;
+	s32 lut_size;
 	struct qos_lut_item *mem;
+	refcount_t refs;
 };
 
 struct qos_lut_ctl {
 	s64 version;
-	u8 cur;
-	struct qos_lut_info *lut_info[QOS_LUT_NUM];
+	struct qos_lut_info __rcu *info;
+};
+
+/* Protected by qs_lut_mutex, including the file's table reference. */
+struct qos_lut_file {
+	s32 type;
+	struct qos_lut_info *info;
 };
 
 enum {
@@ -66,11 +73,11 @@ enum {
 #define IOCTL_GET_LUT_VERSION \
 	_IOR(LUT_CTRL_MAGIC, GET_LUT_VERSION, struct qos_lut_ioctl_request)
 
-void qs_update_lut(struct qos_lut_item *new_items);
-s32 qs_update_lut_request(struct qos_lut_ioctl_request *request);
+extern struct mutex qs_lut_mutex;
+s32 qs_update_lut_request(struct qos_lut_ioctl_request *request,
+			  struct qos_lut_file *state);
 s64 qs_get_lut_version(s32 type);
 struct qos_lut_ctl *qs_get_lut_ctl(s32 type);
-void qs_set_lut_update_type(s32 type);
-s32 qs_get_lut_update_type(void);
-struct qos_lut_item *qs_get_lut_item(s32 qos_level, s32 type);
+void qs_put_lut(struct qos_lut_info *info);
+bool qs_get_lut_item(s32 level, s32 type, struct qos_lut_item *item);
 #endif  /* _OPLUS_QOS_SCHED_LUT_H */

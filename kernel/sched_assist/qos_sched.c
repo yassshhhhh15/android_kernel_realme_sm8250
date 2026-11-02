@@ -64,14 +64,21 @@ typedef struct qos_sched_node {
 	const struct file_operations *opts;
 } qos_sched_node_t;
 
+static bool qs_authorized(void)
+{
+	kuid_t uid = current_euid();
+
+	return uid_eq(uid, GLOBAL_ROOT_UID) ||
+		uid_eq(uid, KUIDT_INIT(SYSTEM_UID));
+}
+
 static int qs_get_task_qos_level(struct task_struct *p)
 {
 	return READ_ONCE(p->qos_level);
 }
 
-static void qs_set_task_uclamp(struct task_struct *task, int min, int max)
+static int qs_set_task_uclamp(struct task_struct *task, int min, int max)
 {
-	unsigned long cur_min = 0, cur_max = 0;
 	u64 uclamp_flag = SCHED_FLAG_UTIL_CLAMP;
 	struct sched_attr attr = { };
 
@@ -81,123 +88,96 @@ static void qs_set_task_uclamp(struct task_struct *task, int min, int max)
 	if (QOS_SCHED_UCLAMP_DEFAULT == max)
 		uclamp_flag &= ~SCHED_FLAG_UTIL_CLAMP_MAX;
 
-	if (min < QOS_SCHED_UCLAMP_DEFAULT ||
-		max < QOS_SCHED_UCLAMP_DEFAULT)
-		return;
-
+	if (min < QOS_SCHED_UCLAMP_DEFAULT || max < QOS_SCHED_UCLAMP_DEFAULT)
+		return -EINVAL;
 	if (!uclamp_flag)
-		return;
-
+		return 0;
 	if (!task || !pid_alive(task))
-		return;
+		return -ESRCH;
 
-	attr.sched_policy = task->policy;
-	attr.sched_flags =
-		SCHED_FLAG_KEEP_ALL |
-		uclamp_flag |
-		SCHED_FLAG_RESET_ON_FORK;
-	attr.sched_util_min = min;
-	attr.sched_util_max = max;
-
-	cur_min = uclamp_eff_value(task, UCLAMP_MIN);
-	cur_max = uclamp_eff_value(task, UCLAMP_MAX);
-
-	if (cur_min != attr.sched_util_min ||
-		cur_max != attr.sched_util_max) {
-		if (rt_policy(task->policy))
-			attr.sched_priority = task->rt_priority;
-		sched_setattr_nocheck(task, &attr);
-	}
+	/* This 4.19 backport has no unsigned -1 reset sentinel. */
+	attr.sched_util_min = min == QOS_SCHED_UCLAMP_RESET ? 0 : min;
+	attr.sched_util_max = max == QOS_SCHED_UCLAMP_RESET ? 1024 : max;
+	/* nocheck bypasses the syscall's KEEP_POLICY translation in 4.19. */
+	attr.sched_policy = -1;
+	if (rt_policy(task->policy))
+		attr.sched_priority = task->rt_priority;
+	attr.sched_flags = SCHED_FLAG_KEEP_ALL | uclamp_flag;
+	return sched_setattr_nocheck(task, &attr);
 }
 
-static void qs_set_task_rt_prio(struct task_struct *p, int prio, int policy)
+static int qs_set_task_prio(struct task_struct *p, int prio, int policy)
 {
-	struct sched_param param;
+	int recover = READ_ONCE(p->qos_recover_prio);
+	int original, ret = 0;
+	bool reset = prio == QOS_SCHED_PRIO_RESET;
 
-	if (!rt_policy(policy))
-		return;
-
-	param.sched_priority = MAX_RT_PRIO - 1 - prio;
-	sched_setscheduler(p, policy, &param);
-}
-
-static void qs_set_task_fair_prio(struct task_struct *p, int prio)
-{
-	int nice = PRIO_TO_NICE(prio);
-	set_user_nice(p, nice);
-}
-
-static void qs_reset_task_prio(struct task_struct *p);
-
-static void qs_set_task_prio(struct task_struct *p, int prio, int policy)
-{
-	int prio_bak = 0;
-
-	if (prio <= QOS_SCHED_PRIO_DEFAULT || prio >= MAX_PRIO) {
-		pr_err("invalid or default qos prio\n");
-		return;
+	if (prio == QOS_SCHED_PRIO_DEFAULT)
+		return 0;
+	if (reset) {
+		if (recover < 0)
+			return 0;
+		policy = recover % 10;
+		prio = recover / 10;
 	}
+	if (prio < 0 || prio >= MAX_PRIO || dl_policy(p->policy))
+		return -EINVAL;
 
-	if (QOS_SCHED_PRIO_RESET == prio) {
-		qs_reset_task_prio(p);
-		return;
+	/* Never invoke scheduling-class callbacks before initial attachment. */
+	if (READ_ONCE(p->state) == TASK_NEW)
+		return 0;
+	original = (rt_policy(p->policy) ? MAX_RT_PRIO - 1 - p->rt_priority :
+		    p->static_prio) * 10 + p->policy;
+	if (rt_prio(prio)) {
+		struct sched_param param = {
+			.sched_priority = MAX_RT_PRIO - 1 - prio,
+		};
+
+		if (!rt_policy(policy))
+			return -EINVAL;
+		ret = sched_setscheduler(p, policy, &param);
+	} else {
+		struct sched_attr attr = {
+			.sched_policy = policy,
+			.sched_nice = PRIO_TO_NICE(prio),
+		};
+
+		if (!fair_policy(policy) && !idle_policy(policy))
+			return -EINVAL;
+		if (p->policy != policy)
+			ret = sched_setattr_nocheck(p, &attr);
+		else
+			set_user_nice(p, attr.sched_nice);
 	}
-
-	prio_bak += p->policy;
-	prio_bak += p->prio * 10;
-
-	WRITE_ONCE(p->qos_recover_prio, prio_bak);
-
-	if (rt_prio(prio))
-		qs_set_task_rt_prio(p, prio, policy);
-	else {
-		if (!fair_policy(policy)) {
-			pr_err("mixed task %d policy %d and prio %d\n", p->pid, policy, prio);
-			return;
-		}
-		if (rt_task(p)) {
-			struct sched_attr attr = {
-				.sched_policy	= policy,
-				.sched_nice	= PRIO_TO_NICE(prio),
-			};
-			sched_setattr_nocheck(p, &attr);
-			return;
-		}
-		qs_set_task_fair_prio(p, prio);
+	if (!ret) {
+		if (reset)
+			WRITE_ONCE(p->qos_recover_prio, -1);
+		else if (recover < 0)
+			WRITE_ONCE(p->qos_recover_prio, original);
 	}
-}
-
-static void qs_reset_task_prio(struct task_struct *task)
-{
-	int recover = READ_ONCE(task->qos_recover_prio);
-	int policy;
-
-	/*don't reset qos task prio before setting it*/
-	if (recover < 0)
-		return;
-
-	/* recover = prio * 10 + policy (see qs_set_task_prio); do_div() is for u64, plain / and % here */
-	policy = recover % 10;
-	qs_set_task_prio(task, recover / 10, policy);
-	WRITE_ONCE(task->qos_recover_prio, -1);
+	return ret;
 }
 
 /*task qos support prio/latency/uclamp setting*/
-static void qs_set_task_qos(struct task_struct *p, struct qos_lut_item *item)
+static int qs_set_task_qos(struct task_struct *p, struct qos_lut_item *item)
 {
-	int prio;
+	int prio, ret;
 	s64 latency;
 	u8 latency_magic;
 
 	if (!item)
-		return;
+		return -EINVAL;
 
 	prio = item->share_or_prio.prio;
 
 	/*sched policy deafault setting*/
-	qs_set_task_prio(p, prio, rt_prio(prio) ? SCHED_FIFO : SCHED_NORMAL);
+	ret = qs_set_task_prio(p, prio, rt_prio(prio) ? SCHED_FIFO : SCHED_NORMAL);
+	if (ret)
+		return ret;
 
-	qs_set_task_uclamp(p, item->uclamp_min, item->uclamp_max);
+	ret = qs_set_task_uclamp(p, item->uclamp_min, item->uclamp_max);
+	if (ret)
+		return ret;
 
 	/*qos latency setting*/
 	latency = item->latency;
@@ -206,72 +186,97 @@ static void qs_set_task_qos(struct task_struct *p, struct qos_lut_item *item)
 		latency &= ~(SCHED_QOS_LATENCY_MAGIC_MASK);
 		write_task_ux(p->tgid, p->pid, (int)latency, true);
 	}
+	return 0;
 }
 
-static bool qs_set_qos_level_by_tid(int tid, struct qos_lut_item *item)
+static int qs_set_qos_level_task(struct task_struct *p, struct qos_lut_item *item)
+{
+	int ret;
+
+	mutex_lock(&p->qs_mutex);
+	ret = qs_set_task_qos(p, item);
+	if (!ret)
+		WRITE_ONCE(p->qos_level, item->qos_level);
+	mutex_unlock(&p->qs_mutex);
+	return ret;
+}
+
+static int qs_set_qos_level_by_tid(int tid, struct qos_lut_item *item)
 {
 	struct task_struct *p;
+	int ret;
 
 	if (IS_ERR_OR_NULL(item))
-		return false;
+		return -ESRCH;
 
 	rcu_read_lock();
 	p = find_task_by_vpid(tid);
 	if (IS_ERR_OR_NULL(p)) {
 		rcu_read_unlock();
-		return false;
+		return -ESRCH;
 	}
 	get_task_struct(p);
 	rcu_read_unlock();
 
-	mutex_lock(&p->qs_mutex);
-	qs_set_task_qos(p, item);
-	p->qos_level = item->qos_level;
-	mutex_unlock(&p->qs_mutex);
-
+	ret = qs_set_qos_level_task(p, item);
 	put_task_struct(p);
-	return true;
+	return ret;
 }
 
-static bool qs_set_qos_level_by_pid(int pid, struct qos_lut_item *item, bool pid_qos_active)
+static int qs_set_qos_level_by_pid(int pid, struct qos_lut_item *item, bool pid_qos_active)
 {
 	struct task_struct *p, *t;
-	pid_t *tids;
-	int n, cnt, i;
+	struct task_struct **tasks;
+	int n, cnt, i, ret = 0;
 
 	rcu_read_lock();
 	p = find_task_by_vpid(pid);
 	if (IS_ERR_OR_NULL(p)) {
-                rcu_read_unlock();
-		return false;
+		rcu_read_unlock();
+		return -ESRCH;
 	}
 	get_task_struct(p);
 	rcu_read_unlock();
 
 	/*
-	 * Snapshot the tids under RCU: setting a level sleeps (qs_mutex, sched_setattr), which the reference
-	 * does inside for_each_thread() without any lock. Threads created later are covered by
-	 * qs_task_inherit_qos_level() when the active bit is set.
+	 * Hold references across the sleeping scheduler operations. Reject a
+	 * snapshot overflow rather than silently skipping existing threads.
+	 * Activation still races forks between this snapshot and publication.
 	 */
 	n = get_nr_threads(p) + 8;
-	tids = kmalloc_array(n, sizeof(*tids), GFP_KERNEL);
-	if (tids) {
-		cnt = 0;
-		rcu_read_lock();
-		for_each_thread(p, t) {
-			if (cnt < n)
-				tids[cnt++] = t->pid;
-		}
-		rcu_read_unlock();
-		for (i = 0; i < cnt; i++)
-			qs_set_qos_level_by_tid(tids[i], item);
-		kfree(tids);
+	tasks = kmalloc_array(n, sizeof(*tasks), GFP_KERNEL);
+	if (!tasks) {
+		put_task_struct(p);
+		return -ENOMEM;
 	}
+	cnt = 0;
+	rcu_read_lock();
+	for_each_thread(p, t) {
+		if (cnt < n) {
+			get_task_struct(t);
+			tasks[cnt++] = t;
+		} else {
+			ret = -EAGAIN;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	for (i = 0; i < cnt; i++) {
+		if (!ret)
+			ret = qs_set_qos_level_task(tasks[i], item);
+		put_task_struct(tasks[i]);
+	}
+	kfree(tasks);
 
-	p->qos_level |= pid_qos_active << SCHED_PIDQOS_ACTIVE_MAGIC_SHIFT;
+	if (!ret) {
+		mutex_lock(&p->qs_mutex);
+		WRITE_ONCE(p->qos_level, (item->qos_level & QOS_PID_LEVEL_MASK) |
+			   (pid_qos_active << SCHED_PIDQOS_ACTIVE_MAGIC_SHIFT));
+		mutex_unlock(&p->qs_mutex);
+	}
 	put_task_struct(p);
 
-	return true;
+	return ret;
 }
 
 static long qs_ctrl_ioctl(struct file *file, unsigned int cmd,
@@ -283,8 +288,11 @@ static long qs_ctrl_ioctl(struct file *file, unsigned int cmd,
 	int i = 0;
 	int qos_level_pid;
 	bool pid_qos_active;
-	struct qos_lut_item *item;
+	struct qos_lut_item item;
 
+
+	if (!qs_authorized())
+		return -EPERM;
 
 	if (_IOC_TYPE(cmd) != QOS_SCHED_MAGIC ||
 		_IOC_NR(cmd) >= SET_LEVEL_MAX) {
@@ -298,32 +306,29 @@ static long qs_ctrl_ioctl(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case IOCTL_SET_TID_LEVEL:
-		item = qs_get_lut_item(data.level, QOS_LUT_TASK);
-		if (IS_ERR_OR_NULL(item)) {
+		if (!qs_get_lut_item(data.level, QOS_LUT_TASK, &item)) {
 			pr_err("No lut item\n");
 			return -EINVAL;
 		}
 		pr_debug("IOCTL: Set TID: %d with level: %d\n",
 			data.info.tid, data.level);
-		qs_set_qos_level_by_tid(data.info.tid, item);
+		ret = qs_set_qos_level_by_tid(data.info.tid, &item);
 		break;
 
 	case IOCTL_SET_PID_LEVEL:
 		qos_level_pid = data.level & QOS_PID_LEVEL_MASK;
 		pid_qos_active = data.level >> SCHED_PIDQOS_ACTIVE_MAGIC_SHIFT ? 1 : 0;
-		item = qs_get_lut_item(qos_level_pid, QOS_LUT_PROCESS);
-		if (IS_ERR_OR_NULL(item)) {
+		if (!qs_get_lut_item(qos_level_pid, QOS_LUT_PROCESS, &item)) {
 			pr_err("No lut item\n");
 			return -EINVAL;
 		}
 		pr_debug("IOCTL: Set PID: %d with level: %d\n",
 		       data.info.pid, data.level);
-		qs_set_qos_level_by_pid(data.info.pid, item, pid_qos_active);
+		ret = qs_set_qos_level_by_pid(data.info.pid, &item, pid_qos_active);
 		break;
 
 	case IOCTL_SET_TID_ARRAY_LEVEL:
-		item = qs_get_lut_item(data.level, QOS_LUT_TASK);
-		if (IS_ERR_OR_NULL(item)) {
+		if (!qs_get_lut_item(data.level, QOS_LUT_TASK, &item)) {
 			pr_err("No lut item\n");
 			return -EINVAL;
 		}
@@ -333,8 +338,9 @@ static long qs_ctrl_ioctl(struct file *file, unsigned int cmd,
 		if (data.info.tarray.count < 0 || data.info.tarray.count > MAX_TIDS)
 			return -EINVAL;
 		for (i = 0; i < data.info.tarray.count; i++) {
-			qs_set_qos_level_by_tid(data.info.tarray.tids[i],
-							item);
+			ret = qs_set_qos_level_by_tid(data.info.tarray.tids[i], &item);
+			if (ret)
+				break;
 		}
 		break;
 	default:
@@ -383,7 +389,7 @@ static ssize_t task_qos_level_write(struct file *file, const char __user *buf,
 	if (err)
 		return err;
 
-	local_per_task_read_pid = val;
+	WRITE_ONCE(local_per_task_read_pid, val);
 
 	return count;
 }
@@ -395,13 +401,16 @@ static ssize_t task_qos_level_read(struct file *file, char __user *buf,
 	size_t len = 0;
 	struct task_struct *task;
 	int level = -1;
+	int pid = READ_ONCE(local_per_task_read_pid);
 
-	task = find_task_by_vpid(local_per_task_read_pid);
+	rcu_read_lock();
+	task = find_task_by_vpid(pid);
 	if (task) {
 		level = qs_get_task_qos_level(task);
 	}
+	rcu_read_unlock();
 	len = snprintf(buffer, sizeof(buffer), "pid: %d, level: %d\n",
-			local_per_task_read_pid, level);
+			pid, level);
 
 	return simple_read_from_buffer(buf, count, ppos, buffer, len);
 }
@@ -577,9 +586,13 @@ static const struct file_operations qos_sched_ctrl_fops = {
 static long qs_lut_ioctl(struct file *file, unsigned int cmd,
 			 unsigned long __arg)
 {
-	unsigned int version;
+	int ret = 0;
+	struct qos_lut_file *state = file->private_data;
 	struct qos_lut_ioctl_request request;
 	void __user *uarg = (void __user *)__arg;
+
+	if (!qs_authorized())
+		return -EPERM;
 
 	if (_IOC_TYPE(cmd) != LUT_CTRL_MAGIC || _IOC_NR(cmd) > CTRL_LUT_MAX)
 		return -EINVAL;
@@ -595,24 +608,28 @@ static long qs_lut_ioctl(struct file *file, unsigned int cmd,
 	pr_debug("%s: lut_size = %d, type = %d, version = %lld\n", __func__,
 			request.lut_size, request.type, request.version);
 
+	mutex_lock(&qs_lut_mutex);
 	switch (cmd) {
 	case IOCTL_GET_LUT_VERSION:
-		version = qs_get_lut_version(request.type);
+		request.version = qs_get_lut_version(request.type);
+		if (copy_to_user(uarg, &request, sizeof(request)))
+			ret = -EFAULT;
 		break;
 	case IOCTL_UPDATE_LUT_REQUEST:
-		qs_set_lut_update_type(request.type);
-		if (qs_update_lut_request(&request))
-			return -ENOMEM;
+		ret = qs_update_lut_request(&request, state);
 		break;
 	default:
+		ret = -EINVAL;
 		break;
 	}
-	return 0;
+	mutex_unlock(&qs_lut_mutex);
+	return ret;
 }
 
 static int qs_lut_open(struct inode *inode, struct file *file)
 {
-	return 0;
+	file->private_data = kzalloc(sizeof(struct qos_lut_file), GFP_KERNEL);
+	return file->private_data ? 0 : -ENOMEM;
 }
 
 static ssize_t qs_lut_read(struct file *file, char __user *buf,
@@ -623,6 +640,10 @@ static ssize_t qs_lut_read(struct file *file, char __user *buf,
 
 static int qs_lut_release(struct inode *inode, struct file *file)
 {
+	struct qos_lut_file *state = file->private_data;
+
+	qs_put_lut(state->info);
+	kfree(state);
 	return 0;
 }
 
@@ -632,41 +653,49 @@ static ssize_t qs_lut_write(struct file *file, const char __user *buf,
 	return 0;
 }
 
+static void qs_lut_vma_open(struct vm_area_struct *vma)
+{
+	struct qos_lut_info *info = vma->vm_private_data;
+
+	refcount_inc(&info->refs);
+}
+
+static void qs_lut_vma_close(struct vm_area_struct *vma)
+{
+	qs_put_lut(vma->vm_private_data);
+}
+
+static const struct vm_operations_struct qs_lut_vm_ops = {
+	.open = qs_lut_vma_open,
+	.close = qs_lut_vma_close,
+};
+
 static int qs_lut_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	struct qos_lut_ctl *lut_ctl = NULL;
-	struct qos_lut_info *cur_lut_info = NULL;
-	unsigned long lut_mem_size = 0;
-	unsigned long pfn = 0;
-	unsigned char cur;
+	struct qos_lut_file *state = file->private_data;
+	struct qos_lut_info *info;
+	unsigned long size = vma->vm_end - vma->vm_start;
+	int ret = -EINVAL;
 
-	lut_ctl = qs_get_lut_ctl(qs_get_lut_update_type());
-
-	if (!lut_ctl) {
-		pr_info("lut_ctl is null\n");
-		return -EINVAL;
+	if (!qs_authorized())
+		return -EPERM;
+	mutex_lock(&qs_lut_mutex);
+	if (!qs_get_lut_ctl(state->type) || !state->info)
+		goto out;
+	info = state->info;
+	if (vma->vm_pgoff || size > PAGE_SIZE << get_order(info->lut_size))
+		goto out;
+	ret = remap_pfn_range(vma, vma->vm_start, virt_to_pfn(info->mem),
+			      size, vma->vm_page_prot);
+	if (!ret) {
+		vma->vm_ops = &qs_lut_vm_ops;
+		vma->vm_private_data = info;
+		/* mmap does not call open for the initial VMA. */
+		qs_lut_vma_open(vma);
 	}
-	pr_debug("lut_version:%lld", lut_ctl->version);
-
-	cur = lut_ctl->cur;
-	cur_lut_info = lut_ctl->lut_info[cur];
-
-	if (!cur_lut_info) {
-		pr_info("cur_lut_info in null\n");
-		return -EINVAL;
-	}
-
-	/* never map more than the table's pages: the size is the caller's */
-	lut_mem_size = vma->vm_end - vma->vm_start;
-	if (lut_mem_size > PAGE_SIZE << get_order(cur_lut_info->lut_size) || vma->vm_pgoff)
-		return -EINVAL;
-	pfn = virt_to_pfn(cur_lut_info->mem);
-
-	if (remap_pfn_range(vma, vma->vm_start, pfn,
-		lut_mem_size, vma->vm_page_prot) < 0) {
-		return -EAGAIN;
-	}
-	return 0;
+ out:
+	mutex_unlock(&qs_lut_mutex);
+	return ret;
 }
 #ifdef CONFIG_COMPAT
 static long qs_lut_table_compat_ioctl(struct file *file, unsigned int cmd,
@@ -690,11 +719,11 @@ static const struct file_operations qos_sched_lut_table_fops = {
 };
 
 static qos_sched_node_t qos_sched_entries[] = {
-	{ "qos_level",	0666,	&qos_sched_ctrl_fops },
-	{ "qos_lut", 		0666,	&qos_sched_lut_table_fops },
-	{ "qos_task_latency",	0666,	&qos_task_latency_proc_fops },
-	{ "qos_task_prio",	0666,	&qos_task_prio_proc_fops },
-	{ "qos_task_uclamp",	0666,	&qos_task_uclamp_proc_fops },
+	{ "qos_level",	0660,	&qos_sched_ctrl_fops },
+	{ "qos_lut", 		0660,	&qos_sched_lut_table_fops },
+	{ "qos_task_latency",	0660,	&qos_task_latency_proc_fops },
+	{ "qos_task_prio",	0660,	&qos_task_prio_proc_fops },
+	{ "qos_task_uclamp",	0660,	&qos_task_uclamp_proc_fops },
 	{ NULL,		0		},
 };
 
@@ -717,7 +746,7 @@ void qs_task_inherit_qos_level(struct task_struct *p)
 {
 	struct task_struct *leader = NULL;
 	int qs_lvl = 0;
-	struct qos_lut_item *item;
+	struct qos_lut_item item;
 
 	/* group leader's qos will be set successfully, ignore it*/
 	if (thread_group_leader(p))
@@ -730,12 +759,11 @@ void qs_task_inherit_qos_level(struct task_struct *p)
 			qs_lvl = READ_ONCE(leader->qos_level);
 			rcu_read_unlock();
 			qs_lvl &= ~(SCHED_PIDQOS_ACTIVE_MAGIC_MASK);
-			item = qs_get_lut_item(qs_lvl, QOS_LUT_PROCESS);
-			if (IS_ERR_OR_NULL(item)) {
-                                pr_err("No lut item\n");
-                                return;
-                        }
-			qs_set_qos_level_by_tid(p->pid, item);
+			if (!qs_get_lut_item(qs_lvl, QOS_LUT_PROCESS, &item)) {
+				pr_err("No lut item\n");
+				return;
+			}
+			qs_set_qos_level_task(p, &item);
 			return;
 		}
 	}
@@ -746,6 +774,15 @@ static int __init qos_sched_init(void)
 {
 	int ret = 0;
 	qos_sched_node_t *entry;
+	struct proc_dir_entry *node;
+
+	BUILD_BUG_ON(sizeof(struct qos_lut_ioctl_request) != 16);
+	BUILD_BUG_ON(sizeof(struct qos_sched_ioctl_data) != 264);
+	BUILD_BUG_ON(sizeof(struct qos_lut_item) != 32);
+	BUILD_BUG_ON(IOCTL_UPDATE_LUT_REQUEST != 0x40107001);
+	BUILD_BUG_ON(IOCTL_SET_TID_LEVEL != 0x41087101);
+	BUILD_BUG_ON(IOCTL_SET_PID_LEVEL != 0x41087102);
+	BUILD_BUG_ON(IOCTL_SET_TID_ARRAY_LEVEL != 0x41087103);
 
 	qos_sched_dir = proc_mkdir(QOS_SCHED_DIR, NULL);
 	if (!qos_sched_dir) {
@@ -756,12 +793,14 @@ static int __init qos_sched_init(void)
 
 	entry = qos_sched_entries;
 	while (entry->name) {
-		if (!proc_create(entry->name, entry->mode,
-			qos_sched_dir, entry->opts)) {
+		node = proc_create(entry->name, entry->mode,
+				   qos_sched_dir, entry->opts);
+		if (!node) {
 			pr_err("Couldn't create node %s!", entry->name);
 			ret = -ENOMEM;
 			goto err_create_qos_attr;
 		}
+		proc_set_user(node, KUIDT_INIT(SYSTEM_UID), KGIDT_INIT(SYSTEM_UID));
 		entry++;
 	}
 	pr_info("version %s init successfully.", VERSION);
