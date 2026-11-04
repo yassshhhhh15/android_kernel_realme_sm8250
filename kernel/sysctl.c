@@ -1987,29 +1987,6 @@ static struct ctl_table kern_table[] = {
 		.proc_handler = proc_dointvec,
 	},
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
-#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
-	{
-		.procname	= "sched_qos_enable",
-		.data		= &sysctl_sched_qos_enable,
-		.maxlen		= sizeof(int),
-		.mode		= 0666,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "sched_qos_mode",
-		.data		= &sysctl_sched_qos_mode,
-		.maxlen		= sizeof(int),
-		.mode		= 0666,
-		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "sched_qos_debug",
-		.data		= &sysctl_sched_qos_debug,
-		.maxlen		= sizeof(int),
-		.mode		= 0666,
-		.proc_handler	= proc_dointvec,
-	},
-#endif
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
 	{
 		.procname	= "cpu_multi_thread",

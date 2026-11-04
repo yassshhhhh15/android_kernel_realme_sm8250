@@ -59,9 +59,6 @@ bool ux_task_misfit(struct task_struct *p, int cpu);
 #ifdef CONFIG_OPLUS_FEATURE_FRAME_BOOST
 #include "../tuning/frame_group.h"
 #endif
-#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
-#include <linux/sched/qos_sched.h>
-#endif
 
 #ifdef CONFIG_OPLUS_FEATURE_VT_CAP
 #include <linux/sched_assist/eas_opt/oplus_cap.h>
@@ -7521,10 +7518,6 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			if (should_ux_task_skip_cpu(p, i))
 				continue;
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
-#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
-			if (qos_sched_skip_cpu(p, i))
-				continue;
-#endif
 
 			if (isolated_candidate == -1)
 				isolated_candidate = i;
@@ -8507,10 +8500,6 @@ oplus_done:
 	if (tpp_task(p))
 		tpp_find_cpu(&best_energy_cpu, p);
 #endif /* CONFIG_OPLUS_FEATURE_TPP */
-
-#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
-	qos_sched_adjust_target(p, best_energy_cpu, &best_energy_cpu);
-#endif
 
 done:
 	trace_sched_task_util(p, cpumask_bits(candidates)[0], best_energy_cpu,

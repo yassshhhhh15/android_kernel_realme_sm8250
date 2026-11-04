@@ -175,10 +175,4 @@ extern int sysctl_sched_assist_scene_handler(struct ctl_table *table, int write,
 	void __user *buffer, size_t *lenp, loff_t *ppos);
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
-#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
-extern int sysctl_sched_qos_enable;
-extern int sysctl_sched_qos_mode;
-extern int sysctl_sched_qos_debug;
-#endif
-
 #endif /* _LINUX_SCHED_SYSCTL_H */
