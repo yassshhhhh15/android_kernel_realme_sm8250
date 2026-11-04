@@ -6,6 +6,7 @@
  *  Copyright (C) 1991-2002  Linus Torvalds
  */
 #include "sched.h"
+#include "../sched_assist/sched_assist_common.h"
 
 #include <linux/nospec.h>
 
