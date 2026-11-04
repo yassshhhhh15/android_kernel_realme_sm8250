@@ -7521,6 +7521,11 @@ static void find_best_target(struct sched_domain *sd, cpumask_t *cpus,
 			if (should_ux_task_skip_cpu(p, i))
 				continue;
 #endif /* OPLUS_FEATURE_SCHED_ASSIST */
+#ifdef CONFIG_OPLUS_FEATURE_QOS_SCHED
+			if (qos_sched_skip_cpu(p, i))
+				continue;
+#endif
+
 			if (isolated_candidate == -1)
 				isolated_candidate = i;
 

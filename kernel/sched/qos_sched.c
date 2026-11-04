@@ -153,7 +153,7 @@ void qos_sched_adjust_target(struct task_struct *task, int eas_cpu,
 #endif
 
 	if (level == QOS_LEVEL_LOW && mode >= 2 &&
-		qos_sched_skip_cpu(task, final_cpu)) {
+		is_max_capacity_cpu(final_cpu)) {
 		int lower_cpu = qos_sched_find_lower_cpu(task);
 
 		if (lower_cpu >= 0) {
