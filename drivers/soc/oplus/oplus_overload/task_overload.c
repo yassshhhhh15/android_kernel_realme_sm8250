@@ -89,7 +89,14 @@ bool test_task_uid(struct task_struct *task)
 
 int get_task_cgroup_id(struct task_struct *task)
 {
-	struct cgroup_subsys_state *css = task_css(task, schedtune_cgrp_id);
+	struct cgroup_subsys_state *css;
+
+#ifdef CONFIG_SCHED_TUNE
+	css = task_css(task, schedtune_cgrp_id);
+#else
+	css = task_css(task, cpu_cgrp_id);
+#endif
+
 	return css ? css->id : -1;
 }
 
