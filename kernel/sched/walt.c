@@ -11,6 +11,7 @@
 #include <trace/events/sched.h>
 #include "sched.h"
 #include "walt.h"
+#include "tune.h"
 
 #include <trace/events/sched.h>
 #ifdef OPLUS_FEATURE_SCHED_ASSIST
