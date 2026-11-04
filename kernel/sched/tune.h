@@ -1,3 +1,5 @@
+#ifndef _KERNEL_SCHED_TUNE_H
+#define _KERNEL_SCHED_TUNE_H
 
 #ifdef CONFIG_SCHED_TUNE
 
@@ -43,6 +45,22 @@ unsigned int uclamp_ed_task_filter(struct task_struct *p);
 
 #ifdef OPLUS_FEATURE_POWER_CPUFREQ
 #define schedtune_window_policy(tsk) 0
+static inline unsigned int uclamp_discount_wait_time(struct task_struct *p)
+{
+        return 0;
+}
+
+static inline unsigned int uclamp_top_task_filter(struct task_struct *p)
+{
+        return 0;
+}
+
+static inline unsigned int uclamp_ed_task_filter(struct task_struct *p)
+{
+        return 0;
+}
 #endif
 
 #endif /* CONFIG_SCHED_TUNE */
+
+#endif /* _KERNEL_SCHED_TUNE_H */
