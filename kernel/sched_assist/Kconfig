@@ -3,16 +3,6 @@ config OPLUS_FEATURE_SCHED_ASSIST
 	default n
 	help
 	  turning sched for ui, render and so on to improve UX
-
-config OPLUS_FEATURE_QOS_SCHED
-	bool "scheduler QoS placement policy"
-	depends on SCHED_WALT
-	default n
-	help
-	  Add an observation-first QoS layer to WALT/EAS. Existing FrameBoost
-	  and SchedAssist decisions remain authoritative; placement mode only
-	  keeps abnormal CFS tasks off the maximum-capacity CPU when possible.
-
 config OPLUS_FEATURE_SCHED_SPREAD
 	bool "sched_spread"
 	default n
