@@ -1123,6 +1123,54 @@ struct wlan_mlme_chainmask {
 	bool enable_bt_chain_separation;
 };
 
+/**
+ * enum wlan_mlme_ratemask_type: Type of PHY for ratemask
+ * @WLAN_MLME_RATEMASK_TYPE_NO_MASK: no ratemask set
+ * @WLAN_MLME_RATEMASK_TYPE_CCK: CCK/OFDM rate
+ * @WLAN_MLEM_RATEMASK_TYPE_HT: HT rate
+ * @WLAN_MLME_RATEMASK_TYPE_VHT: VHT rate
+ * @WLAN_MLME_RATEMASK_TYPE_HE: HE rate
+ *
+ * This is used for 'type' values in wlan_mlme_ratemask
+ */
+enum wlan_mlme_ratemask_type {
+	WLAN_MLME_RATEMASK_TYPE_NO_MASK  =  0,
+	WLAN_MLME_RATEMASK_TYPE_CCK      =  1,
+	WLAN_MLME_RATEMASK_TYPE_HT       =  2,
+	WLAN_MLME_RATEMASK_TYPE_VHT      =  3,
+	WLAN_MLME_RATEMASK_TYPE_HE       =  4,
+	/* keep this last */
+	WLAN_MLME_RATEMASK_TYPE_MAX,
+};
+
+/**
+ * struct wlan_mlme_ratemask - ratemask config parameters
+ * @type:       Type of PHY the mask to be applied
+ * @lower32:    Lower 32 bits in the 1st 64-bit value
+ * @higher32:   Higher 32 bits in the 1st 64-bit value
+ * @lower32_2:  Lower 32 bits in the 2nd 64-bit value
+ * @higher32_2: Higher 32 bits in the 2nd 64-bit value
+ */
+struct wlan_mlme_ratemask {
+	enum wlan_mlme_ratemask_type type;
+	uint32_t lower32;
+	uint32_t higher32;
+	uint32_t lower32_2;
+	uint32_t higher32_2;
+};
+
+/**
+ * struct dual_sta_policy - Concurrent STA policy configuration
+ * @concurrent_sta_policy: Possible values are defined in enum
+ * qca_wlan_concurrent_sta_policy_config
+ * @primary_vdev_id: specified iface is the primary STA iface, say 0 means
+ * vdev 0 is acting as primary interface
+ */
+struct dual_sta_policy {
+	uint8_t concurrent_sta_policy;
+	uint8_t primary_vdev_id;
+};
+
 /* struct wlan_mlme_generic - Generic CFG config items
  *
  * @band_capability: HW Band Capability - Both or 2.4G only or 5G only
@@ -1163,6 +1211,7 @@ struct wlan_mlme_chainmask {
  * @stop_all_host_scan_support: Target capability that indicates if the target
  * supports stop all host scan request type.
  * @sae_connect_retries: sae connect retry bitmask
+ * @dual_sta_policy: Dual STA policies configuration
  */
 struct wlan_mlme_generic {
 	uint32_t band_capability;
@@ -1200,6 +1249,7 @@ struct wlan_mlme_generic {
 	bool enable_peer_unmap_conf_support;
 	bool stop_all_host_scan_support;
 	uint32_t sae_connect_retries;
+	struct dual_sta_policy dual_sta_policy;
 };
 
 /*
