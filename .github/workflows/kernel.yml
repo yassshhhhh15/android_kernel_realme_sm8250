@@ -26,7 +26,7 @@ jobs:
 
     - name: Clone Clang 20
       run: |
-        git clone --depth=1 https://gitlab.com/provasishh/clang-20.git tc
+        git clone --depth=1 https://gitlab.com/yassshhhhh15/clang-23.git tc
 
     - name: Build & Package Kernel
       run: |
