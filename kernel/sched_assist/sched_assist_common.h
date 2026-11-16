@@ -308,6 +308,8 @@ static inline void set_heavy_ux(struct task_struct *task)
 	task->ux_state |= SA_TYPE_HEAVY;
 }
 
+extern int sa_gpu_comp_static;
+
 static inline bool sched_assist_scene(unsigned int scene)
 {
 	if (unlikely(!sysctl_sched_assist_enabled))
@@ -325,7 +327,9 @@ static inline bool sched_assist_scene(unsigned int scene)
 	case SA_ANIM:
 		return sysctl_sched_assist_scene & SA_ANIM;
 	case SA_GPU_COMPOSITION:
-		return sysctl_sched_assist_scene & SA_GPU_COMPOSITION;
+		/* pipa: keep SurfaceFlinger off the little cores at all times (was pipa_port's static bit 8);
+		 * the stock OPPO perf HAL clears bit 8 between GPU compositions (more dropped frames on pipa). */
+		return sa_gpu_comp_static || (sysctl_sched_assist_scene & SA_GPU_COMPOSITION);
 	case SA_AUDIO:
 		return sysctl_sched_assist_scene & SA_AUDIO;
 	default:

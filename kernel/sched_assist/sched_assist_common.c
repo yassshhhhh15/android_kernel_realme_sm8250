@@ -1,3 +1,4 @@
+#include <linux/moduleparam.h>
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2020 Oplus. All rights reserved.
@@ -69,6 +70,10 @@ struct ux_util_record sf_target[SF_GROUP_COUNT] = {
 {"surfaceflinger", 0, 0},
 {"RenderEngine", 0, 0},
 };
+
+/* pipa: SA_GPU_COMPOSITION always on (1) or as the perf HAL sets it (0); /sys/module/sched_assist_common/parameters/gpu_comp_static */
+int sa_gpu_comp_static = 1;
+module_param_named(gpu_comp_static, sa_gpu_comp_static, int, 0644);
 
 pid_t sf_pid = 0;
 pid_t re_pid = 0;
