@@ -1349,8 +1349,6 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 
 	dwc->tx_de_emphasis_quirk = device_property_read_bool(dev,
 				"snps,tx_de_emphasis_quirk");
-	dwc->filter_se0_fsls_eop_quirk = device_property_read_bool(dev,
-				"snps,filter-se0-fsls-eop-quirk");
 	dwc->ssp_u3_u0_quirk = device_property_read_bool(dev,
 				"snps,ssp-u3-u0-quirk");
 	device_property_read_u8(dev, "snps,tx_de_emphasis",
