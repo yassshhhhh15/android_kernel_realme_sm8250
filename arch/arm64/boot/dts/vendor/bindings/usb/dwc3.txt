@@ -54,9 +54,6 @@ Optional properties:
  - snps,rx_detect_poll_quirk: when set core will disable a 400us delay to start
 			Polling LFPS after RX.Detect.
  - snps,tx_de_emphasis_quirk: when set core will set Tx de-emphasis value.
- - snps,filter-se0-fsls-eop-quirk:  When set controller will ignore single SE0
-			glitch on the linestate during transmit
-			Only two or more SE0 is considered as a valid EOP on FS/LS port.
  - snps,tx_de_emphasis: the value driven to the PHY is controlled by the
 			LTSSM during USB3 Compliance mode.
  - snps,dis_u3_susphy_quirk: when set core will disable USB3 suspend phy.

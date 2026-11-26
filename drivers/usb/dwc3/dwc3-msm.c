@@ -4331,7 +4331,6 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 {
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	int ret = 0;
-	u32 reg;
 
 	/*
 	 * The vbus_reg pointer could have multiple values
@@ -4383,17 +4382,6 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		dwc3_en_sleep_mode(dwc);
 		mdwc->usbdev_nb.notifier_call = msm_dwc3_usbdev_notify;
 		usb_register_atomic_notify(&mdwc->usbdev_nb);
-		/*
-		 * Setting GUCTL1 bit 29 so that controller
-		 * will ignore single SE0 glitch on the linestate
-		 * during transmit.
-		 */
-		if (dwc->filter_se0_fsls_eop_quirk) {
-			reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
-			reg |= DWC3_GUCTL1_FILTER_SE0_FSLS_EOP;
-			dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
-		}
-
 		ret = dwc3_host_init(dwc);
 		if (ret) {
 			dev_err(mdwc->dev,

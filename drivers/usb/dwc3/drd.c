@@ -382,17 +382,6 @@ void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus)
 		dwc3_otgregs_init(dwc);
 		dwc3_otg_host_init(dwc);
 		spin_unlock_irqrestore(&dwc->lock, flags);
-		/*
-		 * Setting GUCTL1 bit 29 so that controller
-		 * will ignore single SE0 glitch on the linestate
-		 * during transmit.
-		 */
-		if (dwc->filter_se0_fsls_eop_quirk) {
-			reg = dwc3_readl(dwc->regs, DWC3_GUCTL1);
-			reg |= DWC3_GUCTL1_FILTER_SE0_FSLS_EOP;
-			dwc3_writel(dwc->regs, DWC3_GUCTL1, reg);
-		}
-
 		ret = dwc3_host_init(dwc);
 		if (ret) {
 			dev_err(dwc->dev, "failed to initialize host\n");
