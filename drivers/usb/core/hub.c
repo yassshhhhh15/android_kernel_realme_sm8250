@@ -1355,21 +1355,8 @@ static void hub_quiesce(struct usb_hub *hub, enum hub_quiescing_type type)
 		}
 	}
 
-	/* Attempt to flush delayed init work. Give up if unsafe */
-	// FIXME: We might need a proper way to tell if the lock is held by the
-	// caller. The trylock approach is a safe but inaccurate hack.
-	if(usb_trylock_device(hdev)) {
-		// If the device is locked, chances are that it is locked by the caller.
-		// This way, we cannot safely flush delayed init work in a synchronous
-		// manner. This will cause deadlock as long as there is a pending work
-		// of type HUB_INIT2 or HUB_INIT3.
-		
-		// Otherwise, we can flush delayed init work whenever possible.
-		usb_unlock_device(hdev);
-		flush_delayed_work(&hub->init_work);
-	}
-
 	/* Stop hub_wq and related activity */
+	flush_delayed_work(&hub->init_work);
 	usb_kill_urb(hub->urb);
 	if (hub->has_indicators)
 		cancel_delayed_work_sync(&hub->leds);
