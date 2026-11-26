@@ -89,10 +89,6 @@
 	dwc3@a600000 {
 		usb-phy = <&usb_emu_phy>, <&usb_nop_phy>;
 		maximum-speed = "high-speed";
-
-		snps,filter-se0-fsls-eop-quirk;
-		snps,lfps_filter_quirk;
-		snps,tx_de_emphasis_quirk;
 	};
 };
 
