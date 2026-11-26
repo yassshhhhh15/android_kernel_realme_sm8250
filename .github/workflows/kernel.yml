@@ -2,7 +2,7 @@ name: Build Aurora Kernel
 
 on:
   push:
-    branches: [ cip-4.19.y-oos16 ]
+    branches: [ cip-4.19.y-cos17 ]
   workflow_dispatch:
 
 jobs:
@@ -85,7 +85,7 @@ jobs:
           cp out/arch/arm64/boot/dtb anykernel/
 
           cd anykernel
-          zip -r9 Aurora-OOS16-${DT}.zip *
+          zip -r9 Aurora-COS17-${DT}.zip *
         }
 
         compile
@@ -94,5 +94,5 @@ jobs:
     - name: Upload flashable zip
       uses: actions/upload-artifact@v4
       with:
-        name: Aurora-OOS16
+        name: Aurora-COS17
         path: anykernel/*.zip
